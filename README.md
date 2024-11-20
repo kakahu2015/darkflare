@@ -31,7 +31,9 @@ Breaking past blocked sites!
 ## 🌩️ Cloudflare Configuration 
 Add your new proxy hostname into a free Cloudflare account.
 
-Setup your origin rules to send that host to the origin server (darkflare-server) via the proxy port you choose. I used 8080.
+Setup your origin rules to send that host to the origin server (darkflare-server) via the proxy port you choose. 
+
+I used 8080.
 
 ## ✨ Features
 
@@ -48,10 +50,12 @@ Setup your origin rules to send that host to the origin server (darkflare-server
 
 ### Run the client:
 bash
+
 Run the client
+
 ./bin/darkflare-client -h ssh.foo.host -l 2222 -d       
 
-Add -d flag for debug.
+Add -d flag for debug
 
 ./bin/darkflare-server -d localhost:22 -p 8080 -debug
 
