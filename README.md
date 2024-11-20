@@ -71,19 +71,9 @@ Latency over VPN and TCPoCDN was shockly low, around 100ms.
 
 Requests are randomized to look like normal web traffic with jpg, php, and random file names.
 
-Client and server headers are set to look like normal web traffic. Example client headers are: 
+Client and server headers are set to look like normal web traffic. 
 
-
-
-```
-Server: Apache/2.4.41 (Ubuntu)
-X-Powered-By: PHP/7.4.33
-X-Content-Type-Options: nosniff
-X-Frame-Options: SAMEORIGIN
-X-XSS-Protection: 1; mode=block
-```
-
-
+If you have other ideas please send them my way.
 
 
 ## 🌩️ Cloudflare Configuration 
