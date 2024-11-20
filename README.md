@@ -20,6 +20,7 @@ Internet censorship is a significant issue in many countries, where governments 
 AP NEWS
  In such environments, a tool that tunnels TCP traffic over HTTP(S) through a Content Delivery Network (CDN) like Cloudflare can be invaluable. By disguising restricted traffic as regular web traffic, this method can effectively circumvent censorship measures, granting users access to blocked content and preserving the free flow of information.
 
+```
                                 FIREWALL/CENSORSHIP
                                 |     |     |     |
                                 v     v     v     v
@@ -41,7 +42,7 @@ Flow:
 2. Wrapped as HTTPS ──> Cloudflare CDN
 3. Forwarded to ──> darkflare-server
 4. Unwrapped back to TCP ──> Target Service
-
+```
 
 ## ⁇  Usecases
 ssh, rdp, or anything tcp to bypass restrictive firewalls or state controled internet.
