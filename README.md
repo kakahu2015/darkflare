@@ -11,11 +11,26 @@ It has two parts: a client-side proxy (darkflare-client) that encodes TCP data i
 When using this remember the traffic over the tunnel is only as secure as the Cloudflare protection. Use your own encryption.
 
 ## 🧱  What is TBTB?
-I think CDNs like Cloudflare, Akamai, Fastly, Akamai, and Amazon CloudFront are considered "Too Big to Block" (TBTB) because they power millions of websites globally, including critical infrastructure like government, healthcare, and financial services. Its shared IP architecture means blocking one malicious site can unintentionally block thousands of legitimate ones, creating massive collateral damage. With a vast global network of data centers, Cloudflare’s infrastructure is highly resilient, making it nearly impossible to disrupt without severe technical and logistical challenges. Additionally, blocking Cloudflare would disrupt economies, hinder online commerce, and provoke public and political backlash, as its services are deeply embedded in modern internet functionality. As a neutral service provider, blocking it is akin to shutting down a utility vital to the global web.
+I think CDNs like Cloudflare, Akamai, Fastly, Akamai, and Amazon CloudFront are considered "Too Big to Block" (TBTB) because they power millions of websites globally, including critical infrastructure like government, healthcare, and financial services. With a CDN's shared IP architecture means blocking one malicious site can unintentionally block thousands of legitimate ones, creating massive collateral damage. With a vast global network of data centers, Cloudflare is an easy choice for this application becasue it is nearly impossible to disrupt without severe technical and logistical challenges. Additionally, blocking Cloudflare (or any major CDN) would disrupt economies, hinder online commerce, and provoke public and political backlash, as its services are deeply embedded in modern internet functionality. As a neutral service provider, blocking it is akin to shutting down a utility vital to the global web.
+
+## ⛓️‍💥  Stop Network Sensorship 
+Internet censorship is a significant issue in many countries, where governments restrict access to information by blocking websites and services. For instance, China employs the "Great Firewall" to block platforms like Facebook and Twitter, while Iran restricts access to social media and messaging apps. In Russia, authorities have intensified efforts to control information flow by blocking virtual private networks (VPNs) and other tools that citizens use to bypass censorship.
+
+AP NEWS
+ In such environments, a tool that tunnels TCP traffic over HTTP(S) through a Content Delivery Network (CDN) like Cloudflare can be invaluable. By disguising restricted traffic as regular web traffic, this method can effectively circumvent censorship measures, granting users access to blocked content and preserving the free flow of information.
+
 
 ## ⁇  Usecases
 ssh, rdp, or anything tcp to bypass restrictive firewalls or state controled internet.
+
 Tunneling ppp or other vpn services that leverage TCP.
+
+Breaking past blocked sites! 
+
+## 🌩️ Cloudflare Configuration 
+Add your new proxy hostname into a free Cloudflare account.
+
+Setup your origin rules to send that host to the origin server (darkflare-server) via the proxy port you choose. I used 8080.
 
 ## ✨ Features
 
