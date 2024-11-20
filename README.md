@@ -15,11 +15,19 @@ DarkFlare is a clever little tool that disguises your TCP traffic as innocent HT
 - **TLS Security**: Because we're sneaky, not reckless
 
 ## 🚀 Quick Start
+
+### Run the client:
 bash
 Run the client
-darkflare -l 8080 -h your.cloudflare.domain.com
-Add -d flag if you want to see what's happening under the hood
-darkflare -l 8080 -h your.cloudflare.domain.com -d
+./bin/darkflare-client -h ssh.foo.host -l 2222 -d       
+
+Add -d flag for debug.
+
+./bin/darkflare-server -d localhost:22 -p 8080 -debug
+
+Add -debug for the server debug messages.
+
+ssh user@localhost -p 2222
 
 
 ## ⚠️ Disclaimer
