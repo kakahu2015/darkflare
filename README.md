@@ -53,6 +53,23 @@ Breaking past blocked sites!
 
 [How to use NordVPN over TCP](https://support.nordvpn.com/hc/en-us/articles/19683394518161-OpenVPN-connection-on-NordVPN#:~:text=With%20NordVPN%2C%20you%20can%20connect,differences%20between%20TCP%20and%20UDP. "Configure NordVPN over TCP")
 
+## NordVPN
+
+1. Download the OpenVPN client 
+2. Under Manual setup in your NordVPN account download the .ovpn file for TCP
+3. Edit the .ovpn file and change the IP and port to your darkflare server IP and Port.
+4. Configure darkflare-server to use the IP and port defined in the .ovpn file.
+5. Import the .ovpn file to OpenVPN and setup your username and password.
+
+Note: OpenVPN does some weird thing with the default gateway/route. For testing purposes I added: pull-filter ignore "redirect-gateway" to the .ovpn file. That allows me to force the tunnel to not eat my network. 
+
+Latency over VPN and TCPoCDN was shockly low, around 100ms. 
+
+![OpenVPN on NordVPN over TCPoCDN](./images/openvpn-nordvpn.png)
+
+
+
+
 ## 🌩️ Cloudflare Configuration 
 Add your new proxy hostname into a free Cloudflare account.
 
