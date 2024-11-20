@@ -26,11 +26,11 @@ AP NEWS
                                 v     v     v     v
 
 [Client]──────┐                ┌──────────────────┐                ┌─────────[Target Service]
-              │                │                  │                │         (e.g., SSH Server)
-              │                │   CLOUDFLARE     │                │         localhost:22
-              │                │     NETWORK      │                │
+              │                │                  │                │       (e.g., SSH Server)
+              │                │   CLOUDFLARE     │                │tcp      localhost:22
+              │tcp             │     NETWORK      │                │
 [darkflare    │                │                  │                │ [darkflare
- client]──────┼───HTTPS───────>│ (looks like      │─-───TCP───────>│  server]
+ client]──────┼───HTTPS───────>│ (looks like      │─-HTTPS-───────>│  server]
 localhost:2222│                │  normal traffic) │                │ :8080
               │                │                  │                │
               └────────────────┼──────────────────┼────────────────┘
@@ -50,6 +50,8 @@ ssh, rdp, or anything tcp to bypass restrictive firewalls or state controled int
 Tunneling ppp or other vpn services that leverage TCP.
 
 Breaking past blocked sites! 
+
+[How to use NordVPN over TCP](https://support.nordvpn.com/hc/en-us/articles/19683394518161-OpenVPN-connection-on-NordVPN#:~:text=With%20NordVPN%2C%20you%20can%20connect,differences%20between%20TCP%20and%20UDP. "Configure NordVPN over TCP")
 
 ## 🌩️ Cloudflare Configuration 
 Add your new proxy hostname into a free Cloudflare account.
@@ -72,7 +74,6 @@ I used 8080.
 ## 🚀 Quick Start
 
 ### Run the client:
-bash
 
 Run the client
 

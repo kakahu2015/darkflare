@@ -271,7 +271,7 @@ func main() {
 
 	flag.IntVar(&localPort, "l", 0, "Local port to listen on")
 	flag.StringVar(&cloudflareHost, "h", "", "Cloudflare hostname (e.g., foo.bar.net)")
-	flag.BoolVar(&debug, "d", false, "Enable debug logging")
+	flag.BoolVar(&debug, "debug", false, "Enable debug logging")
 	flag.Parse()
 
 	if localPort == 0 || cloudflareHost == "" {
