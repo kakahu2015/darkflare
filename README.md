@@ -92,7 +92,7 @@ I used 8080.
 - **TLS Security**: Because we're sneaky, not reckless
 
 ## ☠️ Pending Features
-- **Random File Requests**: Randomize the file names for the GET requests with jpegs and php.
+- **Include Spoofed Heasers for Files**: Add real headers to the jpegs and php files to appear to be exactly and they are to be. Add more support for PDF, MOV, and MP4 files to make the traffic looks more realistic. 
 
 ## 🚀 Quick Start
 

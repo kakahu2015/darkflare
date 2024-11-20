@@ -23,6 +23,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	cryptorand "crypto/rand"
 	"crypto/tls"
 	"encoding/hex"
@@ -37,6 +38,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/time/rate"
 )
 
 const (
@@ -50,6 +53,8 @@ type Client struct {
 	sessionID      string
 	httpClient     *http.Client
 	debug          bool
+	maxBodySize    int64
+	rateLimiter    *rate.Limiter
 }
 
 func generateSessionID() string {
@@ -84,7 +89,9 @@ func NewClient(cloudflareHost string, debug bool) *Client {
 			Transport: transport,
 			Timeout:   30 * time.Second,
 		},
-		debug: debug,
+		debug:       debug,
+		maxBodySize: 10 * 1024 * 1024,
+		rateLimiter: rate.NewLimiter(rate.Every(time.Second), 100),
 	}
 }
 
@@ -97,7 +104,7 @@ func (c *Client) debugLog(format string, v ...interface{}) {
 func (c *Client) createDebugRequest(method, baseURL string, body io.Reader) (*http.Request, error) {
 	baseURL = strings.TrimSuffix(baseURL, "/")
 	if !strings.HasPrefix(baseURL, "https://") {
-		baseURL = "https://" + strings.TrimPrefix(baseURL, "https:/")
+		baseURL = "https://" + strings.TrimPrefix(baseURL, "https://")
 	}
 
 	fullURL := fmt.Sprintf("%s/%s", baseURL, randomFilename())
@@ -171,6 +178,14 @@ func (c *Client) createDebugRequest(method, baseURL string, body io.Reader) (*ht
 }
 
 func (c *Client) handleConnection(conn net.Conn) {
+	ctx, cancel := context.WithTimeout(context.Background(), 24*time.Hour)
+	defer cancel()
+
+	if !c.rateLimiter.Allow() {
+		c.debugLog("Rate limit exceeded")
+		return
+	}
+
 	defer conn.Close()
 	localAddr := conn.LocalAddr().String()
 	remoteAddr := conn.RemoteAddr().String()
@@ -187,6 +202,7 @@ func (c *Client) handleConnection(conn net.Conn) {
 			// Send final POST to notify server of disconnection
 			req, _ := c.createDebugRequest(http.MethodPost, c.cloudflareHost, nil)
 			if req != nil {
+				req = req.WithContext(ctx)
 				req.Header.Set("X-Ephemeral", c.sessionID)
 				req.Header.Set("User-Agent", "DarkFlare/1.0")
 				req.Header.Set("X-Connection-Close", "true")
@@ -206,34 +222,40 @@ func (c *Client) handleConnection(conn net.Conn) {
 		defer safeClose()
 		buffer := make([]byte, 8192)
 		for {
-			n, err := conn.Read(buffer)
-			if err != nil {
-				if err != io.EOF {
-					c.debugLog("Error reading from local connection: %v", err)
-				}
+			select {
+			case <-ctx.Done():
 				return
-			}
-
-			if n > 0 {
-				c.debugLog("Read %d bytes from local connection", n)
-				req, err := c.createDebugRequest(http.MethodPost, c.cloudflareHost, bytes.NewReader(buffer[:n]))
+			default:
+				n, err := conn.Read(buffer)
 				if err != nil {
-					c.debugLog("Error creating POST request: %v", err)
+					if err != io.EOF {
+						c.debugLog("Error reading from local connection: %v", err)
+					}
 					return
 				}
 
-				req.Header.Set("X-Ephemeral", c.sessionID)
-				req.Header.Set("User-Agent", "DarkFlare/1.0")
-				req.Header.Set("Content-Type", "application/octet-stream")
+				if n > 0 {
+					c.debugLog("Read %d bytes from local connection", n)
+					req, err := c.createDebugRequest(http.MethodPost, c.cloudflareHost, bytes.NewReader(buffer[:n]))
+					if err != nil {
+						c.debugLog("Error creating POST request: %v", err)
+						return
+					}
 
-				start := time.Now()
-				resp, err := c.httpClient.Do(req)
-				if err != nil {
-					c.debugLog("Error making POST request: %v", err)
-					return
+					req = req.WithContext(ctx)
+					req.Header.Set("X-Ephemeral", c.sessionID)
+					req.Header.Set("User-Agent", "DarkFlare/1.0")
+					req.Header.Set("Content-Type", "application/octet-stream")
+
+					start := time.Now()
+					resp, err := c.httpClient.Do(req)
+					if err != nil {
+						c.debugLog("Error making POST request: %v", err)
+						return
+					}
+					c.debugLog("POST request completed in %v, status: %s", time.Since(start), resp.Status)
+					resp.Body.Close()
 				}
-				c.debugLog("POST request completed in %v, status: %s", time.Since(start), resp.Status)
-				resp.Body.Close()
 			}
 		}
 	}()
@@ -243,6 +265,9 @@ func (c *Client) handleConnection(conn net.Conn) {
 		defer safeClose()
 		for {
 			select {
+			case <-ctx.Done():
+				c.debugLog("Context cancelled, stopping polling for %s", remoteAddr)
+				return
 			case <-done:
 				c.debugLog("Polling stopped for %s", remoteAddr)
 				return
@@ -253,6 +278,7 @@ func (c *Client) handleConnection(conn net.Conn) {
 					return
 				}
 
+				req = req.WithContext(ctx)
 				req.Header.Set("X-Ephemeral", c.sessionID)
 				req.Header.Set("User-Agent", "DarkFlare/1.0")
 
@@ -264,14 +290,14 @@ func (c *Client) handleConnection(conn net.Conn) {
 				}
 
 				if resp.StatusCode != http.StatusOK {
-					body, _ := io.ReadAll(resp.Body)
+					body, _ := io.ReadAll(io.LimitReader(resp.Body, c.maxBodySize))
 					c.debugLog("Server returned non-200 status. Body: %s", string(body))
 					resp.Body.Close()
 					time.Sleep(time.Second)
 					continue
 				}
 
-				data, err := io.ReadAll(resp.Body)
+				data, err := io.ReadAll(io.LimitReader(resp.Body, c.maxBodySize))
 				resp.Body.Close()
 
 				if err != nil {
@@ -305,8 +331,12 @@ func (c *Client) handleConnection(conn net.Conn) {
 	}()
 
 	// Wait for shutdown
-	<-done
-	c.debugLog("Connection handler completed for %s", remoteAddr)
+	select {
+	case <-ctx.Done():
+		c.debugLog("Context timeout reached for %s", remoteAddr)
+	case <-done:
+		c.debugLog("Connection handler completed for %s", remoteAddr)
+	}
 }
 
 func main() {
@@ -356,6 +386,9 @@ func min(a, b int) int {
 }
 
 func randomString(min, max int) string {
+	if min < 0 || max < min {
+		min, max = 1, 15
+	}
 	length := min + rand.Intn(max-min+1)
 	b := make([]byte, length)
 	for i := range b {
