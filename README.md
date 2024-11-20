@@ -65,7 +65,7 @@ Note: OpenVPN does some weird thing with the default gateway/route. For testing 
 
 Latency over VPN and TCPoCDN was shockly low, around 100ms. 
 
-![OpenVPN on NordVPN over TCPoCDN](https://raw.githubusercontent.com/doxx/darkflare.github.io/master/images/openvpn-nordvpn.png)
+![OpenVPN on NordVPN over TCPoCDN](https://raw.githubusercontent.com/doxx/darkflare/master/images/openvpn-nordvpn.png)
 
 
 
