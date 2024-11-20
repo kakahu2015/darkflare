@@ -10,12 +10,11 @@ It has two parts: a client-side proxy (darkflare-client) that encodes TCP data i
 
 When using this remember the traffic over the tunnel is only as secure as the Cloudflare protection. Use your own encryption.
 
-## 🧱  What is TBTB?
-I think CDNs like Cloudflare, Akamai, Fastly, Akamai, and Amazon CloudFront are considered "Too Big to Block" (TBTB) because they power millions of websites globally, including critical infrastructure like government, healthcare, and financial services. With a CDN's shared IP architecture means blocking one malicious site can unintentionally block thousands of legitimate ones, creating massive collateral damage. With a vast global network of data centers, Cloudflare is an easy choice for this application becasue it is nearly impossible to disrupt without severe technical and logistical challenges. Additionally, blocking Cloudflare (or any major CDN) would disrupt economies, hinder online commerce, and provoke public and political backlash, as its services are deeply embedded in modern internet functionality. As a neutral service provider, blocking it is akin to shutting down a utility vital to the global web.
+## 🧱 What is TBTB?
+I think CDNs like Cloudflare, Akamai, Fastly, and Amazon CloudFront are considered "Too Big to Block" (TBTB) because they power millions of websites globally, including critical infrastructure like government, healthcare, and financial services. With a CDN's shared IP architecture, blocking one malicious site can unintentionally block thousands of legitimate ones, creating massive collateral damage.
 
-## ⛓️‍💥  Stop Network Sensorship 
+## ⛓️‍💥 Stop Network Censorship
 Internet censorship is a significant issue in many countries, where governments restrict access to information by blocking websites and services. For instance, China employs the "Great Firewall" to block platforms like Facebook and Twitter, while Iran restricts access to social media and messaging apps. In Russia, authorities have intensified efforts to control information flow by blocking virtual private networks (VPNs) and other tools that citizens use to bypass censorship.
-
 
 AP NEWS
  In such environments, a tool that tunnels TCP traffic over HTTP(S) through a Content Delivery Network (CDN) like Cloudflare can be invaluable. By disguising restricted traffic as regular web traffic, this method can effectively circumvent censorship measures, granting users access to blocked content and preserving the free flow of information.
@@ -68,6 +67,22 @@ Latency over VPN and TCPoCDN was shockly low, around 100ms.
 
 ![OpenVPN on NordVPN over TCPoCDN](https://raw.githubusercontent.com/doxx/darkflare/main/images/openvpn.jpg)
 
+## 🔐 Few Obscureation Techniques
+
+Requests are randomized to look like normal web traffic with jpg, php, and random file names.
+
+Client and server headers are set to look like normal web traffic. Example client headers are: 
+
+
+
+```
+Server: Apache/2.4.41 (Ubuntu)
+X-Powered-By: PHP/7.4.33
+X-Content-Type-Options: nosniff
+X-Frame-Options: SAMEORIGIN
+X-XSS-Protection: 1; mode=block
+```
+
 
 
 
@@ -91,20 +106,38 @@ I used 8080.
 
 ## 🚀 Quick Start
 
-### Run the client:
+### Installation
 
-Run the client
+1. Download the latest release from the releases page
+2. Extract the binaries to your preferred location
+3. Make the binaries executable:
+   ```bash
+   chmod +x darkflare-client darkflare-server
+   ```
 
-./bin/darkflare-client -h ssh.foo.host -l 2222 -d       
+### Running the Client
+```bash
+./darkflare-client -h ssh.foo.host -l 2222 -d
+```
+Add `-debug` flag for debug mode
 
-Add -d flag for debug
+### Running the Server
+```bash
+./darkflare-server -d localhost:22 -p 8080 -debug
+```
+Add `-debug` for server debug messages
 
-./bin/darkflare-server -d localhost:22 -p 8080 -debug
-
-Add -debug for the server debug messages.
-
+### Testing the Connection
+```bash
 ssh user@localhost -p 2222
+```
 
+## ⚠️ Security Considerations
+
+- Always use end-to-end encryption for sensitive traffic
+- The tunnel itself provides obscurity, not security
+- Monitor your Cloudflare logs for suspicious activity
+- Regularly update both client and server components
 
 ## ⚠️ Disclaimer
 
