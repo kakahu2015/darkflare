@@ -23,19 +23,26 @@ package main
 
 import (
 	"bytes"
-	"crypto/rand"
+	cryptorand "crypto/rand"
 	"crypto/tls"
 	"encoding/hex"
 	"flag"
 	"fmt"
 	"io"
 	"log"
+	"math/rand"
 	"net"
 	"net/http"
 	"net/http/httptrace"
 	"strings"
 	"sync"
 	"time"
+)
+
+const (
+	charset = "abcdefghijklmnopqrstuvwxyz0123456789"
+	minLen  = 1
+	maxLen  = 15
 )
 
 type Client struct {
@@ -47,11 +54,16 @@ type Client struct {
 
 func generateSessionID() string {
 	b := make([]byte, 16)
-	rand.Read(b)
+	_, err := io.ReadFull(cryptorand.Reader, b)
+	if err != nil {
+		panic(err)
+	}
 	return hex.EncodeToString(b)
 }
 
 func NewClient(cloudflareHost string, debug bool) *Client {
+	rand.Seed(time.Now().UnixNano())
+
 	if !strings.HasPrefix(cloudflareHost, "https://") {
 		cloudflareHost = "https://" + cloudflareHost
 	}
@@ -82,11 +94,23 @@ func (c *Client) debugLog(format string, v ...interface{}) {
 	}
 }
 
-func (c *Client) createDebugRequest(method, url string, body io.Reader) (*http.Request, error) {
-	req, err := http.NewRequest(method, url, body)
+func (c *Client) createDebugRequest(method, baseURL string, body io.Reader) (*http.Request, error) {
+	baseURL = strings.TrimSuffix(baseURL, "/")
+	if !strings.HasPrefix(baseURL, "https://") {
+		baseURL = "https://" + strings.TrimPrefix(baseURL, "https:/")
+	}
+
+	fullURL := fmt.Sprintf("%s/%s", baseURL, randomFilename())
+	req, err := http.NewRequest(method, fullURL, body)
 	if err != nil {
 		return nil, err
 	}
+
+	host := strings.TrimPrefix(c.cloudflareHost, "https://")
+	host = strings.TrimPrefix(host, "http://")
+	req.Host = host
+
+	c.debugLog("Making %s request to: %s (Host: %s)", method, fullURL, host)
 
 	if c.debug {
 		trace := &httptrace.ClientTrace{
@@ -308,4 +332,18 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func randomString(min, max int) string {
+	length := min + rand.Intn(max-min+1)
+	b := make([]byte, length)
+	for i := range b {
+		b[i] = charset[rand.Intn(len(charset))]
+	}
+	return string(b)
+}
+
+func randomFilename() string {
+	extensions := []string{".php", ".jpg", ".gif", ".html"}
+	return randomString(minLen, maxLen) + extensions[rand.Intn(len(extensions))]
 }

@@ -57,9 +57,10 @@ Breaking past blocked sites!
 
 1. Download the OpenVPN client 
 2. Under Manual setup in your NordVPN account download the .ovpn file for TCP
-3. Edit the .ovpn file and change the IP and port to your darkflare server IP and Port.
-4. Configure darkflare-server to use the IP and port defined in the .ovpn file.
-5. Import the .ovpn file to OpenVPN and setup your username and password.
+3. Also in Manual setup select username and password authentication.
+4. Edit the .ovpn file and change the IP and port to your darkflare server IP and Port.
+5. Configure darkflare-server to use the IP and port defined in the .ovpn file.
+6. Import the .ovpn file to OpenVPN and setup your username and password.
 
 Note: OpenVPN does some weird thing with the default gateway/route. For testing purposes I added: pull-filter ignore "redirect-gateway" to the .ovpn file. That allows me to force the tunnel to not eat my network. 
 
