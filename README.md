@@ -92,7 +92,7 @@ I used 8080.
 - **TLS Security**: Because we're sneaky, not reckless
 
 ## ☠️ Pending Features
-- **Include Spoofed Heasers for Files**: Add real headers to the jpegs and php files to appear to be exactly and they are to be. Add more support for PDF, MOV, and MP4 files to make the traffic looks more realistic. 
+- **Include Spoofed Headers for Files**: Add real headers to the jpegs and php files to appear to be exactly and they are to be. Add more support for PDF, MOV, and MP4 files to make the traffic looks more realistic. 
 
 ## 🚀 Quick Start
 
