@@ -45,21 +45,23 @@ type Session struct {
 }
 
 type Server struct {
-	sessions   sync.Map
-	destHost   string
-	destPort   string
-	debug      bool
-	appCommand string
-	isAppMode  bool
+	sessions    sync.Map
+	destHost    string
+	destPort    string
+	debug       bool
+	appCommand  string
+	isAppMode   bool
+	allowDirect bool
 }
 
-func NewServer(destHost, destPort string, appCommand string, debug bool) *Server {
+func NewServer(destHost, destPort string, appCommand string, debug bool, allowDirect bool) *Server {
 	s := &Server{
-		destHost:   destHost,
-		destPort:   destPort,
-		debug:      debug,
-		appCommand: appCommand,
-		isAppMode:  appCommand != "",
+		destHost:    destHost,
+		destPort:    destPort,
+		debug:       debug,
+		appCommand:  appCommand,
+		isAppMode:   appCommand != "",
+		allowDirect: allowDirect,
 	}
 
 	if s.isAppMode && s.debug {
@@ -177,7 +179,7 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 
 	// Verify Cloudflare connection
 	cfConnecting := r.Header.Get("Cf-Connecting-Ip")
-	if cfConnecting == "" {
+	if cfConnecting == "" && !s.allowDirect {
 		http.Error(w, "Direct access not allowed", http.StatusForbidden)
 		return
 	}
@@ -311,11 +313,13 @@ func main() {
 	var dest string
 	var debug bool
 	var appCommand string
+	var allowDirect bool
 
-	flag.IntVar(&port, "p", 8080, "Port to listen on")
+	flag.IntVar(&port, "p", 8080, "Port to listen on for origin emulation")
 	flag.StringVar(&dest, "d", "", "Destination address (host:port)")
-	flag.StringVar(&appCommand, "a", "", "Application to launch (e.g., 'sshd -i' or 'pppd noauth')")
+	flag.StringVar(&appCommand, "a", "", "Optional: Application to launch (e.g., 'sshd -i' or 'pppd noauth') Not compatible with -d")
 	flag.BoolVar(&debug, "debug", false, "Enable debug logging")
+	flag.BoolVar(&allowDirect, "o", false, "Allow direct connections without Cloudflare")
 	flag.Parse()
 
 	if dest != "" && appCommand != "" {
@@ -335,9 +339,12 @@ func main() {
 		}
 	}
 
-	server := NewServer(destHost, destPort, appCommand, debug)
+	server := NewServer(destHost, destPort, appCommand, debug, allowDirect)
 
 	log.Printf("DarkFlare server running on port %d", port)
+	if allowDirect {
+		log.Printf("Warning: Direct connections allowed (no Cloudflare required)")
+	}
 	if appCommand != "" {
 		log.Printf("Running in application mode with command: %s", appCommand)
 	} else {

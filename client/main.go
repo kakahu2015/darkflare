@@ -35,6 +35,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptrace"
+	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -50,6 +52,8 @@ const (
 
 type Client struct {
 	cloudflareHost string
+	destPort       int
+	scheme         string
 	sessionID      string
 	httpClient     *http.Client
 	debug          bool
@@ -66,12 +70,19 @@ func generateSessionID() string {
 	return hex.EncodeToString(b)
 }
 
-func NewClient(cloudflareHost string, debug bool) *Client {
+func NewClient(cloudflareHost string, destPort int, scheme string, debug bool) *Client {
 	rand.Seed(time.Now().UnixNano())
 
-	if !strings.HasPrefix(cloudflareHost, "https://") {
-		cloudflareHost = "https://" + cloudflareHost
+	if scheme == "" {
+		scheme = "https"
 	}
+	scheme = strings.ToLower(scheme)
+	if scheme != "http" && scheme != "https" {
+		scheme = "https"
+	}
+
+	cloudflareHost = strings.TrimPrefix(cloudflareHost, "http://")
+	cloudflareHost = strings.TrimPrefix(cloudflareHost, "https://")
 
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
@@ -84,6 +95,8 @@ func NewClient(cloudflareHost string, debug bool) *Client {
 
 	return &Client{
 		cloudflareHost: cloudflareHost,
+		destPort:       destPort,
+		scheme:         scheme,
 		sessionID:      generateSessionID(),
 		httpClient: &http.Client{
 			Transport: transport,
@@ -103,11 +116,16 @@ func (c *Client) debugLog(format string, v ...interface{}) {
 
 func (c *Client) createDebugRequest(method, baseURL string, body io.Reader) (*http.Request, error) {
 	baseURL = strings.TrimSuffix(baseURL, "/")
-	if !strings.HasPrefix(baseURL, "https://") {
-		baseURL = "https://" + strings.TrimPrefix(baseURL, "https://")
+	baseURL = strings.TrimPrefix(baseURL, "http://")
+	baseURL = strings.TrimPrefix(baseURL, "https://")
+
+	var fullURL string
+	if (c.scheme == "https" && c.destPort == 443) || (c.scheme == "http" && c.destPort == 80) {
+		fullURL = fmt.Sprintf("%s://%s/%s", c.scheme, baseURL, randomFilename())
+	} else {
+		fullURL = fmt.Sprintf("%s://%s:%d/%s", c.scheme, baseURL, c.destPort, randomFilename())
 	}
 
-	fullURL := fmt.Sprintf("%s/%s", baseURL, randomFilename())
 	req, err := http.NewRequest(method, fullURL, body)
 	if err != nil {
 		return nil, err
@@ -341,16 +359,44 @@ func (c *Client) handleConnection(conn net.Conn) {
 
 func main() {
 	var localPort int
-	var cloudflareHost string
+	var targetURL string
 	var debug bool
 
 	flag.IntVar(&localPort, "l", 0, "Local port to listen on")
-	flag.StringVar(&cloudflareHost, "h", "", "Cloudflare hostname (e.g., foo.bar.net)")
+	flag.StringVar(&targetURL, "t", "", "Target URL (e.g., https://foo.bar.net:8443)")
 	flag.BoolVar(&debug, "debug", false, "Enable debug logging")
 	flag.Parse()
 
-	if localPort == 0 || cloudflareHost == "" {
-		log.Fatal("Required parameters: -l <port> -h <cloudflare-hostname>")
+	if localPort == 0 || targetURL == "" {
+		log.Fatal("Required parameters: -l <port> -t <target-url>")
+	}
+
+	// Parse the target URL
+	if !strings.Contains(targetURL, "://") {
+		targetURL = "https://" + targetURL
+	}
+	u, err := url.Parse(targetURL)
+	if err != nil {
+		log.Fatalf("Invalid target URL: %v", err)
+	}
+
+	// Extract scheme
+	scheme := strings.ToLower(u.Scheme)
+	if scheme != "http" && scheme != "https" {
+		log.Fatal("Scheme must be either 'http' or 'https'")
+	}
+
+	// Extract host and port
+	host := u.Hostname()
+	port := u.Port()
+	destPort := 443
+	if port != "" {
+		destPort, err = strconv.Atoi(port)
+		if err != nil {
+			log.Fatalf("Invalid port number: %v", err)
+		}
+	} else if scheme == "http" {
+		destPort = 80
 	}
 
 	if debug {
@@ -364,7 +410,7 @@ func main() {
 	}
 
 	log.Printf("DarkFlare client listening on port %d", localPort)
-	log.Printf("Connecting via https://%s", cloudflareHost)
+	log.Printf("Connecting via %s://%s:%d", scheme, host, destPort)
 
 	for {
 		conn, err := listener.Accept()
@@ -373,7 +419,7 @@ func main() {
 			continue
 		}
 
-		client := NewClient(cloudflareHost, debug)
+		client := NewClient(host, destPort, scheme, debug)
 		go client.handleConnection(conn)
 	}
 }

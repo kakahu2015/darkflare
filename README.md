@@ -48,6 +48,10 @@ ssh, rdp, or anything tcp to bypass restrictive firewalls or state controled int
 
 Tunneling ppp or other vpn services that leverage TCP.
 
+darkflare-server can launch applications like sshd or pppd. Note that there are issues with host keys and certificate validation on sshd if you don't configure it properly.
+
+Linux's popular pppd daemon will also not run as non-root in some cases, which would require a more complex configuration with sudo.
+
 Breaking past blocked sites! 
 
 [How to use NordVPN over TCP](https://support.nordvpn.com/hc/en-us/articles/19683394518161-OpenVPN-connection-on-NordVPN#:~:text=With%20NordVPN%2C%20you%20can%20connect,differences%20between%20TCP%20and%20UDP. "Configure NordVPN over TCP")
@@ -69,7 +73,7 @@ Latency over VPN and TCPoCDN was shockly low, around 100ms.
 
 ## 🔐 Few Obscureation Techniques
 
-Requests are randomized to look like normal web traffic with jpg, php, and random file names.
+Requests are randomized to look like normal web traffic with jpg, php, etc... with random file names.
 
 Client and server headers are set to look like normal web traffic. 
 
@@ -98,24 +102,32 @@ I used 8080.
 
 ### Installation
 
-1. Download the latest release from the releases page
+1. Download the latest release from the releases page or binary from the main branch.
 2. Extract the binaries to your preferred location
 3. Make the binaries executable:
-   ```bash
-   chmod +x darkflare-client darkflare-server
-   ```
+```bash
+chmod +x darkflare-client darkflare-server
+```
 
 ### Running the Client
 ```bash
-./darkflare-client -h ssh.foo.host -l 2222 -d
+./darkflare-client -l 2222 -t https://host.domain.net:443 
 ```
 Add `-debug` flag for debug mode
+
+### Notes
+Make the host.domain.net you use is configured in Cloudflare to point to the darkflare-server. If you want to debug and go directly to the psudo server you can use the `-o` flag.
 
 ### Running the Server
 ```bash
 ./darkflare-server -d localhost:22 -p 8080 -debug
 ```
 Add `-debug` for server debug messages
+
+### Notes
+- You must specify either `-d` (destination) or `-a` (application) mode, but not both
+- The `-o` flag (open) allows direct connections without Cloudflare headers (not recommended for production). Good for debugging so you can go from the client directly to the server.
+- Debug mode (`-debug`) provides verbose logging of connections and data transfers
 
 ### Testing the Connection
 ```bash
