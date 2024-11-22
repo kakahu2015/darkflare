@@ -398,6 +398,23 @@ func randomString(min, max int) string {
 }
 
 func randomFilename() string {
-	extensions := []string{".php", ".jpg", ".gif", ".html"}
+	extensions := []string{
+		// Common web files
+		".html", ".htm", ".php", ".asp", ".jsp", ".js", ".css",
+		// Images
+		".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".ico", ".bmp",
+		// Documents
+		".pdf", ".txt", ".doc", ".docx",
+		// Media
+		".mp3", ".mp4", ".wav", ".avi",
+		// Archives
+		".zip", ".rar", ".7z",
+		// Data
+		".xml", ".json", ".csv",
+		// Web fonts
+		".woff", ".woff2", ".ttf", ".eot",
+		// Config files
+		".conf", ".cfg", ".ini",
+	}
 	return randomString(minLen, maxLen) + extensions[rand.Intn(len(extensions))]
 }

@@ -22,6 +22,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/hex"
 	"flag"
 	"fmt"
@@ -29,6 +30,9 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
+	"os/exec"
+	"strings"
 	"sync"
 	"time"
 )
@@ -41,17 +45,25 @@ type Session struct {
 }
 
 type Server struct {
-	sessions sync.Map
-	destHost string
-	destPort string
-	debug    bool
+	sessions   sync.Map
+	destHost   string
+	destPort   string
+	debug      bool
+	appCommand string
+	isAppMode  bool
 }
 
-func NewServer(destHost, destPort string, debug bool) *Server {
+func NewServer(destHost, destPort string, appCommand string, debug bool) *Server {
 	s := &Server{
-		destHost: destHost,
-		destPort: destPort,
-		debug:    debug,
+		destHost:   destHost,
+		destPort:   destPort,
+		debug:      debug,
+		appCommand: appCommand,
+		isAppMode:  appCommand != "",
+	}
+
+	if s.isAppMode && s.debug {
+		log.Printf("Starting in application mode with command: %s", appCommand)
 	}
 
 	go s.cleanupSessions()
@@ -75,9 +87,92 @@ func (s *Server) cleanupSessions() {
 	}
 }
 
-func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleApplication(w http.ResponseWriter, r *http.Request) {
 	if s.debug {
-		log.Printf("Received %s request from %s", r.Method, r.Header.Get("Cf-Connecting-Ip"))
+		log.Printf("Handling application request from %s", r.Header.Get("Cf-Connecting-Ip"))
+	}
+
+	parts := strings.Fields(s.appCommand)
+	if len(parts) == 0 {
+		http.Error(w, "Invalid application command", http.StatusInternalServerError)
+		return
+	}
+
+	cmd := exec.Command(parts[0], parts[1:]...)
+	cmd.Env = os.Environ()
+
+	if s.debug {
+		log.Printf("Launching application: %s", s.appCommand)
+	}
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		log.Printf("Failed to create stdout pipe: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		log.Printf("Failed to create stderr pipe: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if err := cmd.Start(); err != nil {
+		log.Printf("Failed to start application: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Handle stdout in a goroutine
+	go func() {
+		scanner := bufio.NewScanner(stdout)
+		for scanner.Scan() {
+			if s.debug {
+				log.Printf("Application stdout: %s", scanner.Text())
+			}
+		}
+		if err := scanner.Err(); err != nil && s.debug {
+			log.Printf("Error reading stdout: %v", err)
+		}
+	}()
+
+	// Handle stderr in a goroutine
+	go func() {
+		scanner := bufio.NewScanner(stderr)
+		for scanner.Scan() {
+			if s.debug {
+				log.Printf("Application stderr: %s", scanner.Text())
+			}
+		}
+		if err := scanner.Err(); err != nil && s.debug {
+			log.Printf("Error reading stderr: %v", err)
+		}
+	}()
+
+	if err := cmd.Wait(); err != nil {
+		if s.debug {
+			log.Printf("Application exited with error: %v", err)
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
+	if s.isAppMode {
+		s.handleApplication(w, r)
+		return
+	}
+
+	if s.debug {
+		log.Printf("Request: %s %s from %s",
+			r.Method,
+			r.URL.Path,
+			r.Header.Get("Cf-Connecting-Ip"),
+		)
+		log.Printf("Headers: %+v", r.Header)
 	}
 
 	// Verify Cloudflare connection
@@ -102,6 +197,9 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 
 	sessionID := r.Header.Get("X-Ephemeral")
 	if sessionID == "" {
+		if s.debug {
+			log.Printf("Error: Missing session ID from %s", r.Header.Get("Cf-Connecting-Ip"))
+		}
 		http.Error(w, "Missing session ID", http.StatusBadRequest)
 		return
 	}
@@ -132,12 +230,18 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
 		data, err := io.ReadAll(r.Body)
 		if err != nil {
+			if s.debug {
+				log.Printf("Error reading request body: %v", err)
+			}
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		if len(data) > 0 {
 			if s.debug {
-				log.Printf("Writing %d bytes to connection", len(data))
+				log.Printf("POST: Writing %d bytes to connection for session %s",
+					len(data),
+					sessionID[:8], // First 8 chars of session ID for brevity
+				)
 			}
 			_, err = session.conn.Write(data)
 			if err != nil {
@@ -170,7 +274,10 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 		}
 		if n > 0 {
 			if s.debug {
-				log.Printf("Read %d bytes from connection", n)
+				log.Printf("GET: Read %d bytes from connection for session %s",
+					n,
+					sessionID[:8],
+				)
 			}
 			readData = append(readData, buffer[:n]...)
 		}
@@ -183,9 +290,19 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 	if len(readData) > 0 {
 		encoded := hex.EncodeToString(readData)
 		if s.debug {
-			log.Printf("Sending %d bytes (encoded: %d bytes)", len(readData), len(encoded))
+			log.Printf("Response: Sending %d bytes (encoded: %d bytes) for session %s path %s",
+				len(readData),
+				len(encoded),
+				sessionID[:8],
+				r.URL.Path,
+			)
 		}
 		w.Write([]byte(encoded))
+	} else if s.debug {
+		log.Printf("Response: No data to send for session %s path %s",
+			sessionID[:8],
+			r.URL.Path,
+		)
 	}
 }
 
@@ -193,25 +310,39 @@ func main() {
 	var port int
 	var dest string
 	var debug bool
+	var appCommand string
 
 	flag.IntVar(&port, "p", 8080, "Port to listen on")
 	flag.StringVar(&dest, "d", "", "Destination address (host:port)")
+	flag.StringVar(&appCommand, "a", "", "Application to launch (e.g., 'sshd -i' or 'pppd noauth')")
 	flag.BoolVar(&debug, "debug", false, "Enable debug logging")
 	flag.Parse()
 
-	if dest == "" {
-		log.Fatal("Destination address (-d) is required")
+	if dest != "" && appCommand != "" {
+		log.Fatal("Cannot specify both -d and -a options")
 	}
 
-	destHost, destPort, err := net.SplitHostPort(dest)
-	if err != nil {
-		log.Fatalf("Invalid destination address: %v", err)
+	if dest == "" && appCommand == "" {
+		log.Fatal("Must specify either destination (-d) or application (-a)")
 	}
 
-	server := NewServer(destHost, destPort, debug)
+	var destHost, destPort string
+	if dest != "" {
+		var err error
+		destHost, destPort, err = net.SplitHostPort(dest)
+		if err != nil {
+			log.Fatalf("Invalid destination address: %v", err)
+		}
+	}
+
+	server := NewServer(destHost, destPort, appCommand, debug)
 
 	log.Printf("DarkFlare server running on port %d", port)
-	log.Printf("Forwarding to %s:%s", destHost, destPort)
+	if appCommand != "" {
+		log.Printf("Running in application mode with command: %s", appCommand)
+	} else {
+		log.Printf("Running in proxy mode, forwarding to %s:%s", destHost, destPort)
+	}
 
 	http.HandleFunc("/", server.handleRequest)
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), nil))
