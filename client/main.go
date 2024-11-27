@@ -174,7 +174,16 @@ func (c *Client) createDebugRequest(method, baseURL string, body io.Reader) (*ht
 	req.Header.Set("Connection", "keep-alive")
 	req.Header.Set("DNT", "1")
 
-	c.debugLog("Making %s request to: %s (Host: %s)", method, fullURL, host)
+	// Resolve IPs before logging
+	ips, err := net.LookupHost(host)
+	ipInfo := ""
+	if err != nil {
+		ipInfo = fmt.Sprintf("(DNS error: %v)", err)
+	} else {
+		ipInfo = fmt.Sprintf("(IPs: %v)", strings.Join(ips, ", "))
+	}
+
+	c.debugLog("Making %s request to: %s (Host: %s %s)", method, fullURL, host, ipInfo)
 
 	if c.debug {
 		trace := &httptrace.ClientTrace{
@@ -225,6 +234,15 @@ func (c *Client) handleConnection(conn net.Conn) {
 	defer conn.Close()
 	localAddr := conn.LocalAddr().String()
 	remoteAddr := conn.RemoteAddr().String()
+
+	// Resolve the CDN hostname to IP
+	ips, err := net.LookupHost(c.cloudflareHost)
+	if err != nil {
+		c.debugLog("Failed to resolve CDN host %s: %v", c.cloudflareHost, err)
+	} else {
+		c.debugLog("Connected to CDN - Host: %s, IPs: %v", c.cloudflareHost, ips)
+	}
+
 	c.debugLog("New connection established - Local: %s, Remote: %s", localAddr, remoteAddr)
 
 	// Create channels for coordinating goroutine shutdown
@@ -420,7 +438,7 @@ func (c *Client) handleResponse(resp *http.Response, body []byte) {
 			case bytes.Contains(body, []byte("Error 522")):
 				errorMsg += "│ Detail: Connection timed out (Cloudflare Error 522)\n"
 			case bytes.Contains(body, []byte("Error 523")):
-				errorMsg += "�� Detail: Origin unreachable (Cloudflare Error 523)\n"
+				errorMsg += "│ Detail: Origin unreachable (Cloudflare Error 523)\n"
 			case bytes.Contains(body, []byte("Error 524")):
 				errorMsg += "│ Detail: Origin timeout (Cloudflare Error 524)\n"
 			default:
@@ -432,7 +450,7 @@ func (c *Client) handleResponse(resp *http.Response, body []byte) {
 			errorMsg += "│ Detail: Received unexpected binary response\n"
 		}
 
-		errorMsg += "╰───────────────────────────────────────────────────────────\n"
+		errorMsg += "╰───────────────────────────────────────────────────────────────\n"
 		c.debugLog(errorMsg)
 		return
 	}
