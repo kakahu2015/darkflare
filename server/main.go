@@ -315,19 +315,53 @@ func main() {
 	var appCommand string
 	var allowDirect bool
 
-	flag.IntVar(&port, "p", 8080, "Port to listen on for origin emulation")
-	flag.StringVar(&dest, "d", "", "Destination address (host:port)")
-	flag.StringVar(&appCommand, "a", "", "Optional: Application to launch (e.g., 'sshd -i' or 'pppd noauth') Not compatible with -d")
-	flag.BoolVar(&debug, "debug", false, "Enable debug logging")
-	flag.BoolVar(&allowDirect, "o", false, "Allow direct connections without Cloudflare")
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "DarkFlare Server - TCP-over-CDN tunnel server component\n")
+		fmt.Fprintf(os.Stderr, "(c) 2024 Barrett Lyon - blyon@blyon.com\n\n")
+		fmt.Fprintf(os.Stderr, "Usage:\n")
+		fmt.Fprintf(os.Stderr, "  %s [options]\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Options:\n")
+		fmt.Fprintf(os.Stderr, "  -p        Port to listen on (default: 8080)\n")
+		fmt.Fprintf(os.Stderr, "  -d        Destination address in host:port format\n")
+		fmt.Fprintf(os.Stderr, "            Example: localhost:22 for SSH forwarding\n\n")
+		fmt.Fprintf(os.Stderr, "  -a        Application mode: launches a command instead of forwarding\n")
+		fmt.Fprintf(os.Stderr, "            Example: 'sshd -i' or 'pppd noauth'\n")
+		fmt.Fprintf(os.Stderr, "            Note: Cannot be used with -d flag\n\n")
+		fmt.Fprintf(os.Stderr, "  -debug    Enable debug logging\n")
+		fmt.Fprintf(os.Stderr, "  -o        Allow direct connections without Cloudflare headers\n")
+		fmt.Fprintf(os.Stderr, "            Warning: Not recommended for production use\n\n")
+		fmt.Fprintf(os.Stderr, "Examples:\n")
+		fmt.Fprintf(os.Stderr, "  SSH forwarding:\n")
+		fmt.Fprintf(os.Stderr, "    %s -d localhost:22 -p 8080\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  Run SSH daemon directly:\n")
+		fmt.Fprintf(os.Stderr, "    %s -a \"sshd -i\" -p 8080\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  Debug mode with direct access:\n")
+		fmt.Fprintf(os.Stderr, "    %s -d localhost:22 -p 8080 -debug -o\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "For more information: https://github.com/blyon/darkflare\n")
+	}
+
+	flag.IntVar(&port, "p", 8080, "")
+	flag.StringVar(&dest, "d", "", "")
+	flag.StringVar(&appCommand, "a", "", "")
+	flag.BoolVar(&debug, "debug", false, "")
+	flag.BoolVar(&allowDirect, "o", false, "")
 	flag.Parse()
 
+	if len(os.Args) == 1 {
+		flag.Usage()
+		os.Exit(1)
+	}
+
 	if dest != "" && appCommand != "" {
-		log.Fatal("Cannot specify both -d and -a options")
+		fmt.Fprintf(os.Stderr, "Error: Cannot specify both -d and -a options\n\n")
+		flag.Usage()
+		os.Exit(1)
 	}
 
 	if dest == "" && appCommand == "" {
-		log.Fatal("Must specify either destination (-d) or application (-a)")
+		fmt.Fprintf(os.Stderr, "Error: Must specify either destination (-d) or application (-a)\n\n")
+		flag.Usage()
+		os.Exit(1)
 	}
 
 	var destHost, destPort string

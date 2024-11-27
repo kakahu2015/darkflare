@@ -36,6 +36,7 @@ import (
 	"net/http"
 	"net/http/httptrace"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -309,7 +310,36 @@ func (c *Client) handleConnection(conn net.Conn) {
 
 				if resp.StatusCode != http.StatusOK {
 					body, _ := io.ReadAll(io.LimitReader(resp.Body, c.maxBodySize))
-					c.debugLog("Server returned non-200 status. Body: %s", string(body))
+					errorMsg := fmt.Sprintf("CDN returned status %d (%s)", resp.StatusCode, resp.Status)
+
+					// Try to extract more detailed error information
+					if len(body) > 0 {
+						// Check if it's HTML (common for CDN error pages)
+						if bytes.Contains(body, []byte("<!DOCTYPE html>")) || bytes.Contains(body, []byte("<html>")) {
+							errorMsg += " - CDN returned an HTML error page"
+						} else {
+							// Add the response body if it's not too long
+							if len(body) > 200 {
+								errorMsg += fmt.Sprintf("\nResponse: %s...", string(body[:200]))
+							} else {
+								errorMsg += fmt.Sprintf("\nResponse: %s", string(body))
+							}
+						}
+					}
+
+					// Add common CDN error code explanations
+					switch resp.StatusCode {
+					case http.StatusBadGateway:
+						errorMsg += "\nPossible cause: Origin server (darkflare-server) is unreachable"
+					case http.StatusForbidden:
+						errorMsg += "\nPossible cause: Request blocked by CDN security rules"
+					case http.StatusServiceUnavailable:
+						errorMsg += "\nPossible cause: CDN temporary error or rate limiting"
+					case http.StatusGatewayTimeout:
+						errorMsg += "\nPossible cause: Origin server (darkflare-server) timed out"
+					}
+
+					c.debugLog("CDN Error: %s", errorMsg)
 					resp.Body.Close()
 					time.Sleep(time.Second)
 					continue
@@ -362,13 +392,46 @@ func main() {
 	var targetURL string
 	var debug bool
 
-	flag.IntVar(&localPort, "l", 0, "Local port to listen on")
-	flag.StringVar(&targetURL, "t", "", "Target URL (e.g., https://foo.bar.net:8443)")
-	flag.BoolVar(&debug, "debug", false, "Enable debug logging")
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "DarkFlare Client - TCP-over-CDN tunnel client component\n")
+		fmt.Fprintf(os.Stderr, "(c) 2024 Barrett Lyon - blyon@blyon.com\n\n")
+		fmt.Fprintf(os.Stderr, "Usage:\n")
+		fmt.Fprintf(os.Stderr, "  %s [options]\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Options:\n")
+		fmt.Fprintf(os.Stderr, "  -l        Local port to listen on for incoming connections\n")
+		fmt.Fprintf(os.Stderr, "            This is where your applications will connect to\n\n")
+		fmt.Fprintf(os.Stderr, "  -t        Target URL of your Cloudflare-protected darkflare-server\n")
+		fmt.Fprintf(os.Stderr, "            Format: [http(s)://]hostname[:port]\n")
+		fmt.Fprintf(os.Stderr, "            Default scheme: https, Default ports: 80/443\n\n")
+		fmt.Fprintf(os.Stderr, "  -debug    Enable detailed debug logging\n")
+		fmt.Fprintf(os.Stderr, "            Shows connection details, data transfer, and errors\n\n")
+		fmt.Fprintf(os.Stderr, "Examples:\n")
+		fmt.Fprintf(os.Stderr, "  Basic SSH tunnel:\n")
+		fmt.Fprintf(os.Stderr, "    %s -l 2222 -t tunnel.example.com\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  Custom port with debugging:\n")
+		fmt.Fprintf(os.Stderr, "    %s -l 8080 -t https://tunnel.example.com:8443 -debug\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  HTTP proxy tunnel:\n")
+		fmt.Fprintf(os.Stderr, "    %s -l 8080 -t http://proxy.example.com\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Usage with SSH:\n")
+		fmt.Fprintf(os.Stderr, "  1. Start the client as shown above\n")
+		fmt.Fprintf(os.Stderr, "  2. Connect via: ssh -p 2222 user@localhost\n\n")
+		fmt.Fprintf(os.Stderr, "For more information: https://github.com/blyon/darkflare\n")
+	}
+
+	flag.IntVar(&localPort, "l", 0, "")
+	flag.StringVar(&targetURL, "t", "", "")
+	flag.BoolVar(&debug, "debug", false, "")
 	flag.Parse()
 
+	if len(os.Args) == 1 {
+		flag.Usage()
+		os.Exit(1)
+	}
+
 	if localPort == 0 || targetURL == "" {
-		log.Fatal("Required parameters: -l <port> -t <target-url>")
+		fmt.Fprintf(os.Stderr, "Error: Both -l and -t parameters are required\n\n")
+		flag.Usage()
+		os.Exit(1)
 	}
 
 	// Parse the target URL
