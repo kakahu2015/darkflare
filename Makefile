@@ -1,9 +1,9 @@
-.PHONY: all clean build-all
+.PHONY: all clean build-all checksums
 
 # Define platforms and output settings
 OUTPUT_DIR=bin
 
-all: build-all
+all: build-all checksums
 
 build-all:
 	mkdir -p $(OUTPUT_DIR)
@@ -22,6 +22,21 @@ build-all:
 	# Windows AMD64
 	GOOS=windows GOARCH=amd64 go build -o $(OUTPUT_DIR)/darkflare-client-windows-amd64.exe client/main.go
 	GOOS=windows GOARCH=amd64 go build -o $(OUTPUT_DIR)/darkflare-server-windows-amd64.exe server/main.go
+
+checksums:
+	cd $(OUTPUT_DIR) && \
+	echo "# DarkFlare Binary Checksums" > checksums.txt && \
+	echo "# Generated: $$(date -u)" >> checksums.txt && \
+	echo "" >> checksums.txt && \
+	( \
+		if command -v sha256sum >/dev/null 2>&1; then \
+			echo "Using sha256sum" && \
+			sha256sum * >> checksums.txt; \
+		else \
+			echo "Using shasum" && \
+			shasum -a 256 * >> checksums.txt; \
+		fi \
+	)
 
 clean:
 	rm -rf $(OUTPUT_DIR)

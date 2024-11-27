@@ -154,35 +154,37 @@ Found a bug? Want to add a feature? PRs are welcome! Just remember:
 
 ## 📥 Downloads
 
-### Latest Release Binaries
+### Latest Binary Downloads
 
 #### Linux
-- [darkflare-client-linux-amd64](https://github.com/blyon/darkflare/releases/latest/download/darkflare-client-linux-amd64)
-- [darkflare-server-linux-amd64](https://github.com/blyon/darkflare/releases/latest/download/darkflare-server-linux-amd64)
+- [darkflare-client-linux-amd64](https://raw.githubusercontent.com/blyon/darkflare/main/bin/darkflare-client-linux-amd64)
+- [darkflare-server-linux-amd64](https://raw.githubusercontent.com/blyon/darkflare/main/bin/darkflare-server-linux-amd64)
 
 #### macOS
 - Intel (AMD64):
-  - [darkflare-client-darwin-amd64](https://github.com/blyon/darkflare/releases/latest/download/darkflare-client-darwin-amd64)
-  - [darkflare-server-darwin-amd64](https://github.com/blyon/darkflare/releases/latest/download/darkflare-server-darwin-amd64)
+  - [darkflare-client-darwin-amd64](https://raw.githubusercontent.com/blyon/darkflare/main/bin/darkflare-client-darwin-amd64)
+  - [darkflare-server-darwin-amd64](https://raw.githubusercontent.com/blyon/darkflare/main/bin/darkflare-server-darwin-amd64)
 - Apple Silicon (ARM64):
-  - [darkflare-client-darwin-arm64](https://github.com/blyon/darkflare/releases/latest/download/darkflare-client-darwin-arm64)
-  - [darkflare-server-darwin-arm64](https://github.com/blyon/darkflare/releases/latest/download/darkflare-server-darwin-arm64)
+  - [darkflare-client-darwin-arm64](https://raw.githubusercontent.com/blyon/darkflare/main/bin/darkflare-client-darwin-arm64)
+  - [darkflare-server-darwin-arm64](https://raw.githubusercontent.com/blyon/darkflare/main/bin/darkflare-server-darwin-arm64)
 
 #### Windows
-- [darkflare-client-windows-amd64.exe](https://github.com/blyon/darkflare/releases/latest/download/darkflare-client-windows-amd64.exe)
-- [darkflare-server-windows-amd64.exe](https://github.com/blyon/darkflare/releases/latest/download/darkflare-server-windows-amd64.exe)
+- [darkflare-client-windows-amd64.exe](https://raw.githubusercontent.com/blyon/darkflare/main/bin/darkflare-client-windows-amd64.exe)
+- [darkflare-server-windows-amd64.exe](https://raw.githubusercontent.com/blyon/darkflare/main/bin/darkflare-server-windows-amd64.exe)
 
 ### Verifying Binaries
 ```bash
 # Download the checksums file
-curl -O https://github.com/blyon/darkflare/releases/latest/download/checksums.txt
+curl -O https://raw.githubusercontent.com/blyon/darkflare/main/bin/checksums.txt
 
-# Verify the download (Linux/macOS)
-sha256sum -c checksums.txt
+# Verify downloads on Linux/macOS
+shasum -a 256 -c checksums.txt
 
-# Verify the download (Windows PowerShell)
+# Verify downloads on Windows PowerShell
 Get-FileHash .\darkflare-client-windows-amd64.exe | Format-List
 ```
+
+Note: All binaries are built automatically from the main branch. The checksums file is generated during the build process to ensure file integrity.
 
 ## 📜 License
 

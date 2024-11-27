@@ -1,0 +1,12 @@
+# DarkFlare Binary Checksums
+# Generated: Wed Nov 27 17:17:28 UTC 2024
+
+c71a5cf86a1280d00dd460046718ccfeee7a8aabbac3241b344bb87705bc7933  checksums.txt
+55acba659aa2e0fe1b6d1926c32988d7e33e53ad87582a0e547922fdcccfcedd  darkflare-client-darwin-amd64
+de1ef97574fe9a6310dd76df938ae0436d1b321f16218b6a142a4915f6ffc144  darkflare-client-darwin-arm64
+bf887e178d20dc7f97e0984032afefefad41568a4a0c7a68f2fd67a5df1e314e  darkflare-client-linux-amd64
+5ba3cf40b182968195e7df419ffe3a5d02567256b529badd6bd9dd32f2ed49ea  darkflare-client-windows-amd64.exe
+635e6593ac287be49cded64674a24a262fc1ae77047ec7beb0e2732a58d8fb52  darkflare-server-darwin-amd64
+af68cf706364049dad8848d6f0bd1a24daae5d5e60db343057482622533df28b  darkflare-server-darwin-arm64
+57a529665b1a3ca0c7ef633afff3ec6a04020918f05e77203c91cb97ae6313ad  darkflare-server-linux-amd64
+62477e5d843ee7c33e2a99f42dcc7c7f34fb369fdced4d90570623accdb8f381  darkflare-server-windows-amd64.exe
