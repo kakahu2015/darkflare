@@ -85,7 +85,7 @@ Add your new proxy hostname into a free Cloudflare account.
 
 Setup your origin rules to send that host to the origin server (darkflare-server) via the proxy port you choose. 
 
-I used 8080.
+I used 8080 with a Cloudflare proxy via HTTP for the firs test. Less overhead.
 
 ## ✨ Features
 
@@ -94,9 +94,6 @@ I used 8080.
 - **Debug Mode**: For when things go wrong and you need to know why (spoiler: it's always DNS)
 - **Session Management**: Keeps your connections organized like a Type A personality
 - **TLS Security**: Because we're sneaky, not reckless
-
-## ☠️ Pending Features
-- **Include Spoofed Headers for Files**: Add real headers to the jpegs and php files to appear to be exactly and they are to be. Add more support for PDF, MOV, and MP4 files to make the traffic looks more realistic. 
 
 ## 🚀 Quick Start
 
@@ -116,18 +113,35 @@ chmod +x darkflare-client darkflare-server
 Add `-debug` flag for debug mode
 
 ### Notes
-Make the host.domain.net you use is configured in Cloudflare to point to the darkflare-server. If you want to debug and go directly to the psudo server you can use the `-o` flag.
+Make the host.domain.net you use is configured in Cloudflare to point to the darkflare-server. If you want to debug and go directly to the psudo server you can use the `-allow-direct` flag on the server.
 
 ### Running the Server
+
 ```bash
-./darkflare-server -d localhost:22 -p 8080 -debug
+# HTTPS Server (recommended for production)
+./darkflare-server -o https://0.0.0.0:443 -d localhost:22 -c /path/to/cert.pem -k /path/to/key.pem
+
+# HTTP Server (for testing)
+./darkflare-server -o http://0.0.0.0:8080 -d localhost:22
 ```
-Add `-debug` for server debug messages
 
 ### Notes
-- You must specify either `-d` (destination) or `-a` (application) mode, but not both
-- The `-o` flag (open) allows direct connections without Cloudflare headers (not recommended for production). Good for debugging so you can go from the client directly to the server.
+- You must specify either `-d` (network destination) or `-a` (application) mode, but not both
+- The `-allow-direct` flag allows direct connections without Cloudflare headers (not recommended for production)
 - Debug mode (`-debug`) provides verbose logging of connections and data transfers
+- Under SSL/TLS configuration in Cloudflare you need to set ssl encryption mode to Full.
+
+### SSL/TLS Certificates
+
+For HTTPS mode, you'll need to obtain origin certificates from Cloudflare:
+
+1. Log into your Cloudflare dashboard
+2. Go to SSL/TLS > Origin Server
+3. Create a new certificate (or use an existing one)
+4. Download both the certificate and private key
+5. When starting the server in HTTPS mode, provide both certificate files:
+
+Note: Keep your private key secure and never share it. The certificate provided by Cloudflare is specifically for securing the connection between Cloudflare and your origin server.
 
 ### Testing the Connection
 ```bash

@@ -310,37 +310,7 @@ func (c *Client) handleConnection(conn net.Conn) {
 
 				if resp.StatusCode != http.StatusOK {
 					body, _ := io.ReadAll(io.LimitReader(resp.Body, c.maxBodySize))
-					errorMsg := fmt.Sprintf("CDN returned status %d (%s)", resp.StatusCode, resp.Status)
-
-					// Try to extract more detailed error information
-					if len(body) > 0 {
-						// Check if it's HTML (common for CDN error pages)
-						if bytes.Contains(body, []byte("<!DOCTYPE html>")) || bytes.Contains(body, []byte("<html>")) {
-							errorMsg += " - CDN returned an HTML error page"
-						} else {
-							// Add the response body if it's not too long
-							if len(body) > 200 {
-								errorMsg += fmt.Sprintf("\nResponse: %s...", string(body[:200]))
-							} else {
-								errorMsg += fmt.Sprintf("\nResponse: %s", string(body))
-							}
-						}
-					}
-
-					// Add common CDN error code explanations
-					switch resp.StatusCode {
-					case http.StatusBadGateway:
-						errorMsg += "\nPossible cause: Origin server (darkflare-server) is unreachable"
-					case http.StatusForbidden:
-						errorMsg += "\nPossible cause: Request blocked by CDN security rules"
-					case http.StatusServiceUnavailable:
-						errorMsg += "\nPossible cause: CDN temporary error or rate limiting"
-					case http.StatusGatewayTimeout:
-						errorMsg += "\nPossible cause: Origin server (darkflare-server) timed out"
-					}
-
-					c.debugLog("CDN Error: %s", errorMsg)
-					resp.Body.Close()
+					c.handleResponse(resp, body)
 					time.Sleep(time.Second)
 					continue
 				}
@@ -354,9 +324,24 @@ func (c *Client) handleConnection(conn net.Conn) {
 				}
 
 				if len(data) > 0 {
-					if bytes.HasPrefix(data, []byte("<")) {
-						c.debugLog("Received HTML response instead of hex data")
-						time.Sleep(time.Second)
+					// Check for Cloudflare directory listing or error pages
+					if bytes.Contains(data, []byte("<!DOCTYPE html>")) || bytes.Contains(data, []byte("<html>")) {
+						// Check for common indicators
+						switch {
+						case bytes.Contains(data, []byte("Index of /")):
+							c.debugLog("Error: Origin server returned a directory listing - Server may be misconfigured")
+						case bytes.Contains(data, []byte("Error 521")):
+							c.debugLog("Error: Origin server is down or not responding (Cloudflare Error 521)")
+						case bytes.Contains(data, []byte("Error 522")):
+							c.debugLog("Error: Connection timed out to origin server (Cloudflare Error 522)")
+						case bytes.Contains(data, []byte("Error 523")):
+							c.debugLog("Error: Origin server is unreachable (Cloudflare Error 523)")
+						case bytes.Contains(data, []byte("Error 524")):
+							c.debugLog("Error: Connection timed out waiting for origin server (Cloudflare Error 524)")
+						default:
+							c.debugLog("Error: Received HTML response instead of tunnel data - Origin server may be down or misconfigured")
+						}
+						time.Sleep(time.Second * 5) // Increased backoff for server errors
 						continue
 					}
 
@@ -385,6 +370,56 @@ func (c *Client) handleConnection(conn net.Conn) {
 	case <-done:
 		c.debugLog("Connection handler completed for %s", remoteAddr)
 	}
+}
+
+func (c *Client) handleResponse(resp *http.Response, body []byte) {
+	if resp.StatusCode != http.StatusOK {
+		// Format error message
+		errorMsg := fmt.Sprintf("\n╭─ CDN Error ─────────────────────────────────────────────────\n")
+		errorMsg += fmt.Sprintf("│ Status: %d (%s)\n", resp.StatusCode, resp.Status)
+
+		// Add common CDN error explanations
+		switch resp.StatusCode {
+		case http.StatusBadGateway:
+			errorMsg += "│ Cause:  Origin server (darkflare-server) is unreachable\n"
+		case http.StatusForbidden:
+			errorMsg += "│ Cause:  Request blocked by CDN security rules\n"
+		case http.StatusServiceUnavailable:
+			errorMsg += "│ Cause:  CDN temporary error or rate limiting\n"
+		case http.StatusGatewayTimeout:
+			errorMsg += "│ Cause:  Origin server (darkflare-server) timed out\n"
+		case http.StatusNotFound:
+			errorMsg += "│ Cause:  Origin server not responding or incorrect path\n"
+		}
+
+		// If we got HTML content, parse it for specific errors
+		if bytes.Contains(body, []byte("<!DOCTYPE html>")) || bytes.Contains(body, []byte("<html>")) {
+			switch {
+			case bytes.Contains(body, []byte("Index of /")):
+				errorMsg += "│ Detail: Origin server returned directory listing\n"
+				errorMsg += "│        Server is misconfigured or not running darkflare\n"
+			case bytes.Contains(body, []byte("Error 521")):
+				errorMsg += "│ Detail: Origin server is down (Cloudflare Error 521)\n"
+			case bytes.Contains(body, []byte("Error 522")):
+				errorMsg += "│ Detail: Connection timed out (Cloudflare Error 522)\n"
+			case bytes.Contains(body, []byte("Error 523")):
+				errorMsg += "│ Detail: Origin unreachable (Cloudflare Error 523)\n"
+			case bytes.Contains(body, []byte("Error 524")):
+				errorMsg += "│ Detail: Origin timeout (Cloudflare Error 524)\n"
+			default:
+				errorMsg += "│ Detail: Received HTML instead of tunnel data\n"
+				errorMsg += "│        Server may be down or misconfigured\n"
+			}
+		} else if len(body) > 0 {
+			// If we got binary data, just indicate it
+			errorMsg += "│ Detail: Received unexpected binary response\n"
+		}
+
+		errorMsg += "╰───────────────────────────────────────────────────────────\n"
+		c.debugLog(errorMsg)
+		return
+	}
+	// ... handle successful response ...
 }
 
 func main() {
