@@ -150,7 +150,39 @@ This tool is for educational purposes only. Please don't use it to bypass your c
 Found a bug? Want to add a feature? PRs are welcome! Just remember:
 - Keep it clean
 - Keep it clever
-- Keep it working
+
+
+## 📥 Downloads
+
+### Latest Release Binaries
+
+#### Linux
+- [darkflare-client-linux-amd64](https://github.com/blyon/darkflare/releases/latest/download/darkflare-client-linux-amd64)
+- [darkflare-server-linux-amd64](https://github.com/blyon/darkflare/releases/latest/download/darkflare-server-linux-amd64)
+
+#### macOS
+- Intel (AMD64):
+  - [darkflare-client-darwin-amd64](https://github.com/blyon/darkflare/releases/latest/download/darkflare-client-darwin-amd64)
+  - [darkflare-server-darwin-amd64](https://github.com/blyon/darkflare/releases/latest/download/darkflare-server-darwin-amd64)
+- Apple Silicon (ARM64):
+  - [darkflare-client-darwin-arm64](https://github.com/blyon/darkflare/releases/latest/download/darkflare-client-darwin-arm64)
+  - [darkflare-server-darwin-arm64](https://github.com/blyon/darkflare/releases/latest/download/darkflare-server-darwin-arm64)
+
+#### Windows
+- [darkflare-client-windows-amd64.exe](https://github.com/blyon/darkflare/releases/latest/download/darkflare-client-windows-amd64.exe)
+- [darkflare-server-windows-amd64.exe](https://github.com/blyon/darkflare/releases/latest/download/darkflare-server-windows-amd64.exe)
+
+### Verifying Binaries
+```bash
+# Download the checksums file
+curl -O https://github.com/blyon/darkflare/releases/latest/download/checksums.txt
+
+# Verify the download (Linux/macOS)
+sha256sum -c checksums.txt
+
+# Verify the download (Windows PowerShell)
+Get-FileHash .\darkflare-client-windows-amd64.exe | Format-List
+```
 
 ## 📜 License
 
@@ -158,3 +190,4 @@ MIT License - Because sharing is caring, but attribution is nice.
 
 ---
 *Built with ❤️ and a healthy dose of mischief*
+
