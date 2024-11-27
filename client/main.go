@@ -88,10 +88,27 @@ func NewClient(cloudflareHost string, destPort int, scheme string, debug bool) *
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
 			MinVersion: tls.VersionTLS12,
+			CurvePreferences: []tls.CurveID{
+				tls.X25519, // Chrome prioritizes X25519
+				tls.CurveP256,
+				tls.CurveP384,
+			},
+			CipherSuites: []uint16{
+				tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+				tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+				tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+				tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+				tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
+				tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
+			},
+			PreferServerCipherSuites: false,
+			SessionTicketsDisabled:   false,
+			InsecureSkipVerify:       false,
 		},
 		MaxIdleConns:       100,
 		IdleConnTimeout:    90 * time.Second,
 		DisableCompression: true,
+		ForceAttemptHTTP2:  true, // Enable HTTP/2 support like Chrome
 	}
 
 	return &Client{
@@ -403,7 +420,7 @@ func (c *Client) handleResponse(resp *http.Response, body []byte) {
 			case bytes.Contains(body, []byte("Error 522")):
 				errorMsg += "│ Detail: Connection timed out (Cloudflare Error 522)\n"
 			case bytes.Contains(body, []byte("Error 523")):
-				errorMsg += "│ Detail: Origin unreachable (Cloudflare Error 523)\n"
+				errorMsg += "�� Detail: Origin unreachable (Cloudflare Error 523)\n"
 			case bytes.Contains(body, []byte("Error 524")):
 				errorMsg += "│ Detail: Origin timeout (Cloudflare Error 524)\n"
 			default:
