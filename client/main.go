@@ -63,20 +63,6 @@ func generateSessionID() string {
 }
 
 func NewClient(targetHost string, targetPort int, scheme string, debug bool, directMode bool) *Client {
-        // 解析完整URL
-		u, err := url.Parse(targetURL)
-		if err != nil {
-			log.Fatal(err)
-		}
-        // 获取认证信息
-		var username, password string
-		if u.User != nil {
-			username = u.User.Username()
-			password, _ = u.User.Password()
-		}
-	
-
-
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
 			MinVersion: tls.VersionTLS12,
@@ -94,8 +80,7 @@ func NewClient(targetHost string, targetPort int, scheme string, debug bool, dir
 
 
 	return &Client{
-		targetHost:   u.Hostname(),  // 使用解析后的主机名
-		//targetHost:   targetHost,
+        targetHost:   targetHost,
 		targetPort:   targetPort,
 		scheme:      scheme,
 		username:    username,
@@ -386,10 +371,20 @@ func main() {
 			log.Printf("Error accepting connection: %v", err)
 			continue
 		}
+		   // 使用已经解析好的信息创建客户端
+		   username := ""
+		   password := ""
+		   if u.User != nil {
+			   username = u.User.Username()
+			   password, _ = u.User.Password()
+		   }
+		   
+		   host := u.Hostname()  // 这些变量在前面已经有了
+		   client := NewClient(host, destPort, scheme, debug, directMode, username, password)
 
 		//client := NewClient(host, destPort, scheme, debug, directMode)
 	
-		client := NewClient(targetURL, destPort, scheme, debug, directMode)
+
 		go client.handleConnection(conn)
 	}
 }
