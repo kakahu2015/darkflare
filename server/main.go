@@ -34,6 +34,8 @@ type Server struct {
 	appCommand  string
 	isAppMode   bool
 	directMode  bool
+	username    string
+        password    string
 }
 
 func NewServer(destHost, destPort string, appCommand string, debug bool, directMode bool) *Server {
