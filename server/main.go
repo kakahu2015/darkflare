@@ -143,12 +143,14 @@ func (s *Server) handleApplication(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
+
+    ////////////////////////////////////
+	username, password, ok := r.BasicAuth()
+
 	if s.debug {
         log.Printf("Auth attempt - User: %s, Auth OK: %v", username, ok)
         log.Printf("Expected - User: %s, Pass: %s", s.username, s.password)
     }
-    ////////////////////////////////////
-	username, password, ok := r.BasicAuth()
     if !ok || username != s.username || password != s.password {
         w.Header().Set("Location", "https://book.kakahu.org")
         w.WriteHeader(http.StatusFound) 
