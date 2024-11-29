@@ -34,8 +34,8 @@ type Server struct {
 	appCommand  string
 	isAppMode   bool
 	directMode  bool
-	username    string
-        password    string
+	username    string 
+    password    string
 }
 
 func NewServer(destHost, destPort string, appCommand string, debug bool, directMode bool) *Server {
@@ -316,14 +316,7 @@ func main() {
 
 	flag.StringVar(&auth, "auth", "", "Basic auth (user:pass)")
     
-    // 解析完参数后加上
-    if auth != "" {
-        parts := strings.Split(auth, ":")
-        if len(parts) == 2 {
-            server.username = parts[0] 
-            server.password = parts[1]
-        }
-    }
+
 
 	flag.StringVar(&origin, "o", "http://0.0.0.0:8080", "Origin address (e.g., http://0.0.0.0:8080)")
 	flag.StringVar(&dest, "d", "", "Destination address (e.g., localhost:22)")
@@ -362,6 +355,16 @@ func main() {
 	}
 
 	server := NewServer(destHost, destPort, appCommand, debug, directMode)
+	//////////////////////
+	    // 解析完参数后加上
+		if auth != "" {
+			parts := strings.Split(auth, ":")
+			if len(parts) == 2 {
+				server.username = parts[0] 
+				server.password = parts[1]
+			}
+		}
+	//////////////////////
 
 	log.Printf("Server running on %s://%s:%s", originURL.Scheme, originHost, originPort)
 	if directMode {
