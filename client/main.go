@@ -63,6 +63,20 @@ func generateSessionID() string {
 }
 
 func NewClient(targetHost string, targetPort int, scheme string, debug bool, directMode bool) *Client {
+        // 解析完整URL
+		u, err := url.Parse(targetURL)
+		if err != nil {
+			log.Fatal(err)
+		}
+        // 获取认证信息
+		var username, password string
+		if u.User != nil {
+			username = u.User.Username()
+			password, _ = u.User.Password()
+		}
+	
+
+
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
 			MinVersion: tls.VersionTLS12,
@@ -77,22 +91,11 @@ func NewClient(targetHost string, targetPort int, scheme string, debug bool, dir
 		DisableCompression: true,
 		ForceAttemptHTTP2:  !directMode,
 	}
-	///////////////////////
-	    // 从targetHost中解析认证信息
-		var username, password string
-		if strings.Contains(targetHost, "@") {
-			parts := strings.Split(targetHost, "@")
-			auth := strings.Split(parts[0], ":")
-			if len(auth) == 2 {
-				username = auth[0]
-				password = auth[1]
-			}
-			targetHost = parts[1]
-		}
-	///////////////////////
+
 
 	return &Client{
-		targetHost:   targetHost,
+		targetHost:   u.Hostname(),  // 使用解析后的主机名
+		//targetHost:   targetHost,
 		targetPort:   targetPort,
 		scheme:      scheme,
 		username:    username,
@@ -384,7 +387,9 @@ func main() {
 			continue
 		}
 
-		client := NewClient(host, destPort, scheme, debug, directMode)
+		//client := NewClient(host, destPort, scheme, debug, directMode)
+	
+		client := NewClient(targetURL, destPort, scheme, debug, directMode)
 		go client.handleConnection(conn)
 	}
 }
