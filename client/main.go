@@ -29,8 +29,6 @@ const (
 )
 
 type Client struct {
-	username    string  // 新增
-    password    string  // 新增
 	targetHost   string
 	targetPort   int
 	scheme      string
@@ -40,6 +38,8 @@ type Client struct {
 	maxBodySize int64
 	rateLimiter *rate.Limiter
 	directMode  bool
+	username    string  // 移动到结构体内
+	password    string  // 移动到结构体内
 }
 
 func secureRandomInt(max int) int {
@@ -62,7 +62,7 @@ func generateSessionID() string {
 	return hex.EncodeToString(b)
 }
 
-func NewClient(targetHost string, targetPort int, scheme string, debug bool, directMode bool) *Client {
+func NewClient(targetHost string, targetPort int, scheme string, debug bool, directMode bool, username string, password string) *Client {
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
 			MinVersion: tls.VersionTLS12,
@@ -78,13 +78,10 @@ func NewClient(targetHost string, targetPort int, scheme string, debug bool, dir
 		ForceAttemptHTTP2:  !directMode,
 	}
 
-
 	return &Client{
-        targetHost:   targetHost,
+		targetHost:   targetHost,
 		targetPort:   targetPort,
 		scheme:      scheme,
-		username:    username,
-        password:    password,
 		sessionID:   generateSessionID(),
 		httpClient:  &http.Client{
 			Transport: transport,
@@ -94,6 +91,8 @@ func NewClient(targetHost string, targetPort int, scheme string, debug bool, dir
 		maxBodySize: 10 * 1024 * 1024,
 		rateLimiter: rate.NewLimiter(rate.Every(time.Second), 100),
 		directMode:  directMode,
+		username:    username,  // 添加认证信息
+		password:    password,  // 添加认证信息
 	}
 }
 
@@ -349,6 +348,14 @@ func main() {
 		destPort = 80
 	}
 
+	// 获取认证信息
+	username := ""
+	password := ""
+	if u.User != nil {
+		username = u.User.Username()
+		password, _ = u.User.Password()
+	}
+
 	if debug {
 		log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.Lshortfile)
 		log.Printf("Debug mode enabled")
@@ -371,20 +378,8 @@ func main() {
 			log.Printf("Error accepting connection: %v", err)
 			continue
 		}
-		   // 使用已经解析好的信息创建客户端
-		   username := ""
-		   password := ""
-		   if u.User != nil {
-			   username = u.User.Username()
-			   password, _ = u.User.Password()
-		   }
-		   
-		   host := u.Hostname()  // 这些变量在前面已经有了
-		   client := NewClient(host, destPort, scheme, debug, directMode, username, password)
 
-		//client := NewClient(host, destPort, scheme, debug, directMode)
-	
-
+		client := NewClient(host, destPort, scheme, debug, directMode, username, password)
 		go client.handleConnection(conn)
 	}
 }
