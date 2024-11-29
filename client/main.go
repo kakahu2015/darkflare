@@ -29,6 +29,8 @@ const (
 )
 
 type Client struct {
+	username    string  // 新增
+    password    string  // 新增
 	targetHost   string
 	targetPort   int
 	scheme      string
@@ -75,11 +77,26 @@ func NewClient(targetHost string, targetPort int, scheme string, debug bool, dir
 		DisableCompression: true,
 		ForceAttemptHTTP2:  !directMode,
 	}
+	///////////////////////
+	    // 从targetHost中解析认证信息
+		var username, password string
+		if strings.Contains(targetHost, "@") {
+			parts := strings.Split(targetHost, "@")
+			auth := strings.Split(parts[0], ":")
+			if len(auth) == 2 {
+				username = auth[0]
+				password = auth[1]
+			}
+			targetHost = parts[1]
+		}
+	///////////////////////
 
 	return &Client{
 		targetHost:   targetHost,
 		targetPort:   targetPort,
 		scheme:      scheme,
+		username:    username,
+        password:    password,
 		sessionID:   generateSessionID(),
 		httpClient:  &http.Client{
 			Transport: transport,
@@ -110,6 +127,9 @@ func (c *Client) createRequest(method, path string, body io.Reader) (*http.Reque
 	if err != nil {
 		return nil, err
 	}
+
+	// 添加Basic认证
+    req.SetBasicAuth(c.username, c.password)  // 新增此行
 
 	req.Header.Set("X-Session-ID", c.sessionID)
 	req.Header.Set("Cache-Control", "no-cache")
