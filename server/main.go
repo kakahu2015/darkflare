@@ -391,6 +391,7 @@ func main() {
 			Addr:    fmt.Sprintf("%s:%s", originHost, originPort),
 			Handler: http.HandlerFunc(server.handleRequest),
 			TLSConfig: &tls.Config{
+				Certificates: []tls.Certificate{cert},  // 添加这行，使用加载的证书
 				MinVersion: tls.VersionTLS12,     // 最低支持 TLS 1.2
 				MaxVersion: tls.VersionTLS13,     // 最高支持 TLS 1.3
 				CipherSuites: []uint16{           // 指定安全的加密套件
