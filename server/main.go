@@ -391,11 +391,15 @@ func main() {
 			Addr:    fmt.Sprintf("%s:%s", originHost, originPort),
 			Handler: http.HandlerFunc(server.handleRequest),
 			TLSConfig: &tls.Config{
-				Certificates: []tls.Certificate{cert},
-				MinVersion:  tls.VersionTLS12,
-				MaxVersion:  tls.VersionTLS13,
-				ClientAuth:  tls.NoClientCert,
-				NextProtos: []string{"h2", "http/1.1"},
+				MinVersion: tls.VersionTLS12,     // 最低支持 TLS 1.2
+				MaxVersion: tls.VersionTLS13,     // 最高支持 TLS 1.3
+				CipherSuites: []uint16{           // 指定安全的加密套件
+					tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+					tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+					tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+					tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+				},
+				PreferServerCipherSuites: true,
 			},
 		}
 
