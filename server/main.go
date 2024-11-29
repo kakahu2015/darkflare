@@ -170,21 +170,35 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if s.debug {
+	/*if s.debug {
 		log.Printf("Request: %s %s from %s",
 			r.Method,
 			r.URL.Path,
 			r.Header.Get("Cf-Connecting-Ip"),
 		)
 		log.Printf("Headers: %+v", r.Header)
-	}
+	}*/
 
 	// Verify Cloudflare connection
-	cfConnecting := r.Header.Get("Cf-Connecting-Ip")
+	//cfConnecting := r.Header.Get("Cf-Connecting-Ip")
 	//if cfConnecting == "" && !s.allowDirect {
 	//	http.Error(w, "Direct access not allowed", http.StatusForbidden)
 		return
 	//}
+	
+	clientAddr := r.RemoteAddr
+if cfIP := r.Header.Get("Cf-Connecting-Ip"); cfIP != "" {
+    clientAddr = cfIP  
+}
+
+if s.debug {
+    log.Printf("Request: %s %s from %s",
+        r.Method,
+        r.URL.Path,
+        clientAddr,
+    )
+    log.Printf("Headers: %+v", r.Header)
+}
 
 	// Set Apache-like headers
 	w.Header().Set("Server", "Apache/2.4.41 (Ubuntu)")
