@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"math/rand"
 	"net"
 	"net/http"
 	"net/url"
@@ -41,6 +40,17 @@ type Client struct {
 	directMode  bool
 }
 
+func secureRandomInt(max int) int {
+	var result int
+	binary := make([]byte, 8)
+	_, err := rand.Read(binary)
+	if err != nil {
+		return int(time.Now().UnixNano() % int64(max))
+	}
+	result = int(binary[0]) % max
+	return result
+}
+
 func generateSessionID() string {
 	b := make([]byte, 16)
 	_, err := io.ReadFull(rand.Reader, b)
@@ -51,8 +61,6 @@ func generateSessionID() string {
 }
 
 func NewClient(targetHost string, targetPort int, scheme string, debug bool, directMode bool) *Client {
-	rand.Seed(time.Now().UnixNano())
-
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
 			MinVersion: tls.VersionTLS12,
@@ -93,10 +101,8 @@ func (c *Client) debugLog(format string, v ...interface{}) {
 func (c *Client) createRequest(method, path string, body io.Reader) (*http.Request, error) {
 	var fullURL string
 	if c.directMode {
-		// 直连模式使用简单的URL
 		fullURL = fmt.Sprintf("%s://%s:%d/%s", c.scheme, c.targetHost, c.targetPort, path)
 	} else {
-		// CDN模式使用随机文件名
 		fullURL = fmt.Sprintf("%s://%s:%d/%s", c.scheme, c.targetHost, c.targetPort, randomFilename())
 	}
 
@@ -105,12 +111,10 @@ func (c *Client) createRequest(method, path string, body io.Reader) (*http.Reque
 		return nil, err
 	}
 
-	// 设置基本头部
 	req.Header.Set("X-Session-ID", c.sessionID)
 	req.Header.Set("Cache-Control", "no-cache")
 	
 	if !c.directMode {
-		// CDN模式下添加伪装头部
 		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36")
 		req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8")
 		req.Header.Set("Accept-Language", "en-US,en;q=0.9")
@@ -163,7 +167,6 @@ func (c *Client) handleConnection(conn net.Conn) {
 
 	defer safeClose()
 
-	// 读取数据的goroutine
 	go func() {
 		defer safeClose()
 		buffer := make([]byte, 8192)
@@ -204,7 +207,6 @@ func (c *Client) handleConnection(conn net.Conn) {
 		}
 	}()
 
-	// 轮询数据的goroutine
 	go func() {
 		defer safeClose()
 		for {
@@ -270,12 +272,11 @@ func (c *Client) handleConnection(conn net.Conn) {
 	}
 }
 
-// 辅助函数
 func randomString(min, max int) string {
-	length := min + rand.Intn(max-min+1)
+	length := min + secureRandomInt(max-min+1)
 	b := make([]byte, length)
 	for i := range b {
-		b[i] = charset[rand.Intn(len(charset))]
+		b[i] = charset[secureRandomInt(len(charset))]
 	}
 	return string(b)
 }
@@ -288,7 +289,7 @@ func randomFilename() string {
 		".zip", ".rar", ".7z",
 		".xml", ".json", ".csv",
 	}
-	return randomString(minLen, maxLen) + extensions[rand.Intn(len(extensions))]
+	return randomString(minLen, maxLen) + extensions[secureRandomInt(len(extensions))]
 }
 
 func main() {
