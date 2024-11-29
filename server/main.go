@@ -141,6 +141,15 @@ func (s *Server) handleApplication(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
+    ////////////////////////////////////
+	username, password, ok := r.BasicAuth()
+    if !ok || username != s.username || password != s.password {
+        w.Header().Set("Location", "https://book.kakahu.org")
+        w.WriteHeader(http.StatusFound) 
+        return
+    }
+	////////////////////////////////////
+
 	if s.isAppMode {
 		s.handleApplication(w, r)
 		return
@@ -301,6 +310,18 @@ func main() {
 	var debug bool
 	var directMode bool
 	var appCommand string
+	var auth string
+
+	flag.StringVar(&auth, "auth", "", "Basic auth (user:pass)")
+    
+    // 解析完参数后加上
+    if auth != "" {
+        parts := strings.Split(auth, ":")
+        if len(parts) == 2 {
+            server.username = parts[0] 
+            server.password = parts[1]
+        }
+    }
 
 	flag.StringVar(&origin, "o", "http://0.0.0.0:8080", "Origin address (e.g., http://0.0.0.0:8080)")
 	flag.StringVar(&dest, "d", "", "Destination address (e.g., localhost:22)")
