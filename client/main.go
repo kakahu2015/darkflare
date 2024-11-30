@@ -101,14 +101,7 @@ func (c *Client) debugLog(format string, v ...interface{}) {
 }
 
 func (c *Client) createRequest(method, path string, body io.Reader) (*http.Request, error) {
-	//fullURL := fmt.Sprintf("%s://%s:%d/%s", c.scheme, c.targetHost, c.targetPort, randomFilename())
-	var fullURL string
-    if path == "data" || path == "close" {
-        fullURL = fmt.Sprintf("%s://%s:%d/%s", c.scheme, c.targetHost, c.targetPort, path)
-    } else {
-        // 其他情况使用随机文件名，保持一定的混淆性
-        fullURL = fmt.Sprintf("%s://%s:%d/%s", c.scheme, c.targetHost, c.targetPort, randomFilename())
-    }
+	fullURL := fmt.Sprintf("%s://%s:%d/%s", c.scheme, c.targetHost, c.targetPort, randomFilename())
 
 	req, err := http.NewRequest(method, fullURL, body)
 	if err != nil {
