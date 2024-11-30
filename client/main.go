@@ -61,7 +61,7 @@ func generateSessionID() string {
 	return hex.EncodeToString(b)
 }
 
-func NewClient(targetHost string, targetPort int, scheme string, debug bool, directMode bool, username string, password string) *Client {
+func NewClient(targetHost string, targetPort int, scheme string, debug bool, username string, password string) *Client {
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
 			MinVersion: tls.VersionTLS12,
@@ -291,7 +291,6 @@ func main() {
 	var localPort int
 	var targetURL string
 	var debug bool
-	var directMode bool
 
 	flag.IntVar(&localPort, "l", 0, "Local port to listen on")
 	flag.StringVar(&targetURL, "t", "", "Target URL")
