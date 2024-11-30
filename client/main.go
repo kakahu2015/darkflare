@@ -89,7 +89,6 @@ func NewClient(targetHost string, targetPort int, scheme string, debug bool, dir
 		debug:       debug,
 		maxBodySize: 10 * 1024 * 1024,
 		rateLimiter: rate.NewLimiter(rate.Every(time.Second), 100),
-		directMode:  directMode,
 		username:    username,  // 添加认证信息
 		password:    password,  // 添加认证信息
 	}
@@ -297,7 +296,6 @@ func main() {
 	flag.IntVar(&localPort, "l", 0, "Local port to listen on")
 	flag.StringVar(&targetURL, "t", "", "Target URL")
 	flag.BoolVar(&debug, "debug", false, "Enable debug logging")
-	flag.BoolVar(&directMode, "direct", false, "Enable direct connection mode")
 	flag.Parse()
 
 	if len(os.Args) == 1 {
@@ -365,7 +363,7 @@ func main() {
 			continue
 		}
 
-		client := NewClient(host, destPort, scheme, debug, directMode, username, password)
+		client := NewClient(host, destPort, scheme, debug, username, password)
 		go client.handleConnection(conn)
 	}
 }
