@@ -174,8 +174,14 @@ if sessionID == "" {
 }
 
 // 最后，如果所有header都为空，使用客户端地址作为后备方案
+//if sessionID == "" {
+//    sessionID = fmt.Sprintf("%x", sha256.Sum256([]byte(r.RemoteAddr)))
+//}
+// 只取前8位作为 sessionID
+sessionID = fullID[:8]
+
 if sessionID == "" {
-    sessionID = fmt.Sprintf("%x", sha256.Sum256([]byte(r.RemoteAddr)))
+    sessionID = fmt.Sprintf("%x", sha256.Sum256([]byte(r.RemoteAddr)))[:8]
 }
 
 if sessionID == "" {
