@@ -48,6 +48,15 @@ func NewServer(destHost, destPort string, appCommand string, debug bool, directM
 		directMode: directMode,
 	}
 
+	if s.debug {
+		if s.directMode {
+			log.Printf("Starting in direct connection mode")
+		}
+		if s.isAppMode {
+			log.Printf("Starting in application mode with command: %s", appCommand)
+		}
+	}
+
 	go s.cleanupSessions()
 	return s
 }
@@ -137,11 +146,6 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 
     ////////////////////////////////////
 	username, password, ok := r.BasicAuth()
-
-	if s.debug {
-        log.Printf("Auth attempt - User: %s, Auth OK: %v", username, ok)
-        log.Printf("Expected - User: %s, Pass: %s", s.username, s.password)
-    }
     if !ok || username != s.username || password != s.password {
         w.Header().Set("Location", "https://book.kakahu.org")
         w.WriteHeader(http.StatusFound) 
@@ -159,39 +163,55 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Headers: %+v", r.Header)
 	}
 
-	var sessionID string
-sessionID = r.Header.Get("X-Session-ID")
-if sessionID == "" {
-    sessionID = r.Header.Get("X-Ephemeral")
-}
-
-// 如果还是空再使用CDN的header
-if sessionID == "" {
-    sessionID = r.Header.Get("Cf-Ray")
-    if sessionID == "" {
-        sessionID = r.Header.Get("Cf-Connecting-Ip")
-    }
-}
-
-// 最后，如果所有header都为空，使用客户端地址作为后备方案
-//if sessionID == "" {
-//    sessionID = fmt.Sprintf("%x", sha256.Sum256([]byte(r.RemoteAddr)))
-//}
-// 只取前8位作为 sessionID
-sessionID = fullID[:8]
-
-if sessionID == "" {
-    sessionID = fmt.Sprintf("%x", sha256.Sum256([]byte(r.RemoteAddr)))[:8]
-}
-
-if sessionID == "" {
-    if s.debug {
-        log.Printf("Error: Missing session ID from %s", r.RemoteAddr)
-    }
-    http.Error(w, "Missing session ID", http.StatusBadRequest)
-    return
-}
-
+	  // 修改这段代码
+	  var sessionID string
+	  if s.directMode {
+		  // 首先尝试获取Direct模式的会话ID
+		  sessionID = r.Header.Get("X-Session-ID")
+		  if sessionID == "" {
+			  // 尝试获取CDN模式的会话ID
+			  sessionID = r.Header.Get("Cf-Ray")
+			  if sessionID == "" {
+				  sessionID = r.Header.Get("Cf-Connecting-Ip")
+			  }
+			  if sessionID == "" {
+				  sessionID = r.Header.Get("X-Ephemeral")
+			  }
+		  }
+		  // 如果仍然没有会话ID，则使用客户端地址
+		  if sessionID == "" {
+			  sessionID = fmt.Sprintf("%x", sha256.Sum256([]byte(r.RemoteAddr)))
+		  }
+	  } else {
+		  // CDN模式下的会话ID处理
+		  sessionID = r.Header.Get("Cf-Ray")
+		  if sessionID == "" {
+			  sessionID = r.Header.Get("Cf-Connecting-Ip")
+		  }
+		  if sessionID == "" {
+			  sessionID = r.Header.Get("X-Ephemeral")
+		  }
+		  if sessionID == "" {
+			  // 在CDN模式下也尝试使用Direct模式的会话ID
+			  sessionID = r.Header.Get("X-Session-ID")
+		  }
+		  
+		  // 注释掉或删除这个CDN验证检查，因为我们现在支持混合模式
+		  /*
+		  cfConnecting := r.Header.Get("Cf-Connecting-Ip")
+		  if cfConnecting == "" && !s.directMode {
+			  http.Error(w, "Direct access not allowed in CDN mode", http.StatusForbidden)
+			  return
+		  }
+		  */
+	  }
+	if sessionID == "" {
+		if s.debug {
+			log.Printf("Error: Missing session ID from %s", r.RemoteAddr)
+		}
+		http.Error(w, "Missing session ID", http.StatusBadRequest)
+		return
+	}
 
 	// 设置基本响应头
 	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
@@ -364,6 +384,9 @@ func main() {
 	//////////////////////
 
 	log.Printf("Server running on %s://%s:%s", originURL.Scheme, originHost, originPort)
+	if directMode {
+		log.Printf("Running in direct connection mode")
+	}
 
 	if originURL.Scheme == "https" {
 		if certFile == "" || keyFile == "" {
