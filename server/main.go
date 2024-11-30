@@ -146,6 +146,11 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 
     ////////////////////////////////////
 	username, password, ok := r.BasicAuth()
+
+	if s.debug {
+        log.Printf("Auth attempt - User: %s, Auth OK: %v", username, ok)
+        log.Printf("Expected - User: %s, Pass: %s", s.username, s.password)
+    }
     if !ok || username != s.username || password != s.password {
         w.Header().Set("Location", "https://book.kakahu.org")
         w.WriteHeader(http.StatusFound) 
@@ -163,48 +168,31 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Headers: %+v", r.Header)
 	}
 
-	  // 修改这段代码
-	  var sessionID string
-	  if s.directMode {
-		  // 首先尝试获取Direct模式的会话ID
-		  sessionID = r.Header.Get("X-Session-ID")
-		  if sessionID == "" {
-			  // 尝试获取CDN模式的会话ID
-			  sessionID = r.Header.Get("Cf-Ray")
-			  if sessionID == "" {
-				  sessionID = r.Header.Get("Cf-Connecting-Ip")
-			  }
-			  if sessionID == "" {
-				  sessionID = r.Header.Get("X-Ephemeral")
-			  }
-		  }
-		  // 如果仍然没有会话ID，则使用客户端地址
-		  if sessionID == "" {
-			  sessionID = fmt.Sprintf("%x", sha256.Sum256([]byte(r.RemoteAddr)))
-		  }
-	  } else {
-		  // CDN模式下的会话ID处理
-		  sessionID = r.Header.Get("Cf-Ray")
-		  if sessionID == "" {
-			  sessionID = r.Header.Get("Cf-Connecting-Ip")
-		  }
-		  if sessionID == "" {
-			  sessionID = r.Header.Get("X-Ephemeral")
-		  }
-		  if sessionID == "" {
-			  // 在CDN模式下也尝试使用Direct模式的会话ID
-			  sessionID = r.Header.Get("X-Session-ID")
-		  }
-		  
-		  // 注释掉或删除这个CDN验证检查，因为我们现在支持混合模式
-		  /*
-		  cfConnecting := r.Header.Get("Cf-Connecting-Ip")
-		  if cfConnecting == "" && !s.directMode {
-			  http.Error(w, "Direct access not allowed in CDN mode", http.StatusForbidden)
-			  return
-		  }
-		  */
-	  }
+	var sessionID string
+	if s.directMode {
+		sessionID = r.Header.Get("X-Session-ID")
+		if sessionID == "" {
+			// 在直连模式下使用客户端地址作为会话ID
+			sessionID = fmt.Sprintf("%x", sha256.Sum256([]byte(r.RemoteAddr)))
+		}
+	} else {
+		// CDN模式下的会话ID处理
+		sessionID = r.Header.Get("Cf-Ray")
+		if sessionID == "" {
+			sessionID = r.Header.Get("Cf-Connecting-Ip")
+		}
+		if sessionID == "" {
+			sessionID = r.Header.Get("X-Ephemeral")
+		}
+		
+		// 验证CDN请求
+		cfConnecting := r.Header.Get("Cf-Connecting-Ip")
+		if cfConnecting == "" && !s.directMode {
+			http.Error(w, "Direct access not allowed in CDN mode", http.StatusForbidden)
+			return
+		}
+	}
+
 	if sessionID == "" {
 		if s.debug {
 			log.Printf("Error: Missing session ID from %s", r.RemoteAddr)
@@ -219,13 +207,14 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Expires", "0")
 	w.Header().Set("Content-Type", "application/octet-stream")
 
-
-	w.Header().Set("Server", "Apache/2.4.41 (Ubuntu)")
-	w.Header().Set("X-Powered-By", "PHP/7.4.33")
-	w.Header().Set("X-Content-Type-Options", "nosniff")
-	w.Header().Set("X-Frame-Options", "SAMEORIGIN")
-	w.Header().Set("X-XSS-Protection", "1; mode=block")
-
+	// 在CDN模式下添加伪装头
+	if !s.directMode {
+		w.Header().Set("Server", "Apache/2.4.41 (Ubuntu)")
+		w.Header().Set("X-Powered-By", "PHP/7.4.33")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "SAMEORIGIN")
+		w.Header().Set("X-XSS-Protection", "1; mode=block")
+	}
 
 	var session *Session
 	sessionInterface, exists := s.sessions.Load(sessionID)
