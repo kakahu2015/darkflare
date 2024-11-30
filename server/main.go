@@ -48,15 +48,6 @@ func NewServer(destHost, destPort string, appCommand string, debug bool, directM
 		directMode: directMode,
 	}
 
-	if s.debug {
-		if s.directMode {
-			log.Printf("Starting in direct connection mode")
-		}
-		if s.isAppMode {
-			log.Printf("Starting in application mode with command: %s", appCommand)
-		}
-	}
-
 	go s.cleanupSessions()
 	return s
 }
@@ -184,13 +175,7 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 		if sessionID == "" {
 			sessionID = r.Header.Get("X-Ephemeral")
 		}
-		
-		// 验证CDN请求
-		cfConnecting := r.Header.Get("Cf-Connecting-Ip")
-		if cfConnecting == "" && !s.directMode {
-			http.Error(w, "Direct access not allowed in CDN mode", http.StatusForbidden)
-			return
-		}
+
 	}
 
 	if sessionID == "" {
@@ -372,9 +357,6 @@ func main() {
 	//////////////////////
 
 	log.Printf("Server running on %s://%s:%s", originURL.Scheme, originHost, originPort)
-	if directMode {
-		log.Printf("Running in direct connection mode")
-	}
 
 	if originURL.Scheme == "https" {
 		if certFile == "" || keyFile == "" {
