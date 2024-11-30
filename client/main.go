@@ -37,7 +37,6 @@ type Client struct {
 	debug       bool
 	maxBodySize int64
 	rateLimiter *rate.Limiter
-	directMode  bool
 	username    string  // 移动到结构体内
 	password    string  // 移动到结构体内
 }
@@ -75,7 +74,7 @@ func NewClient(targetHost string, targetPort int, scheme string, debug bool, dir
 		MaxIdleConns:       100,
 		IdleConnTimeout:    90 * time.Second,
 		DisableCompression: true,
-		ForceAttemptHTTP2:  !directMode,
+		ForceAttemptHTTP2:  true,
 	}
 
 	return &Client{
@@ -103,25 +102,17 @@ func (c *Client) debugLog(format string, v ...interface{}) {
 }
 
 func (c *Client) createRequest(method, path string, body io.Reader) (*http.Request, error) {
-	var fullURL string
-	if c.directMode {
-		fullURL = fmt.Sprintf("%s://%s:%d/%s", c.scheme, c.targetHost, c.targetPort, path)
-	} else {
-		fullURL = fmt.Sprintf("%s://%s:%d/%s", c.scheme, c.targetHost, c.targetPort, randomFilename())
-	}
-
+	fullURL := fmt.Sprintf("%s://%s:%d/%s", c.scheme, c.targetHost, c.targetPort, randomFilename())
 	req, err := http.NewRequest(method, fullURL, body)
 	if err != nil {
 		return nil, err
 	}
-
 	// 添加Basic认证
     req.SetBasicAuth(c.username, c.password)  // 新增此行
 
 	req.Header.Set("X-Session-ID", c.sessionID)
 	req.Header.Set("Cache-Control", "no-cache")
 	
-
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36")
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8")
 	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
@@ -366,9 +357,6 @@ func main() {
 
 	log.Printf("Client listening on port %d", localPort)
 	log.Printf("Connecting via %s://%s:%d", scheme, host, destPort)
-	if directMode {
-		log.Printf("Running in direct connection mode")
-	}
 
 	for {
 		conn, err := listener.Accept()
