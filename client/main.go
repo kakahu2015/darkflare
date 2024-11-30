@@ -37,6 +37,7 @@ type Client struct {
 	debug       bool
 	maxBodySize int64
 	rateLimiter *rate.Limiter
+	directMode  bool
 	username    string  // 移动到结构体内
 	password    string  // 移动到结构体内
 }
@@ -61,7 +62,7 @@ func generateSessionID() string {
 	return hex.EncodeToString(b)
 }
 
-func NewClient(targetHost string, targetPort int, scheme string, debug bool, username string, password string) *Client {
+func NewClient(targetHost string, targetPort int, scheme string, debug bool, directMode bool, username string, password string) *Client {
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
 			MinVersion: tls.VersionTLS12,
@@ -74,7 +75,7 @@ func NewClient(targetHost string, targetPort int, scheme string, debug bool, use
 		MaxIdleConns:       100,
 		IdleConnTimeout:    90 * time.Second,
 		DisableCompression: true,
-		ForceAttemptHTTP2:  true,
+		ForceAttemptHTTP2:  !directMode,
 	}
 
 	return &Client{
@@ -89,6 +90,7 @@ func NewClient(targetHost string, targetPort int, scheme string, debug bool, use
 		debug:       debug,
 		maxBodySize: 10 * 1024 * 1024,
 		rateLimiter: rate.NewLimiter(rate.Every(time.Second), 100),
+		directMode:  directMode,
 		username:    username,  // 添加认证信息
 		password:    password,  // 添加认证信息
 	}
@@ -101,18 +103,27 @@ func (c *Client) debugLog(format string, v ...interface{}) {
 }
 
 func (c *Client) createRequest(method, path string, body io.Reader) (*http.Request, error) {
-	fullURL := fmt.Sprintf("%s://%s:%d/%s", c.scheme, c.targetHost, c.targetPort, randomFilename())
+	var fullURL string
+	if method == http.MethodGet {
+		// GET请求总是使用随机文件名
+		fullURL = fmt.Sprintf("%s://%s:%d/%s", c.scheme, c.targetHost, c.targetPort, randomFilename())
+	} else {
+		// POST请求总是使用固定路径
+		fullURL = fmt.Sprintf("%s://%s:%d/%s", c.scheme, c.targetHost, c.targetPort, path)
+	}
 
 	req, err := http.NewRequest(method, fullURL, body)
 	if err != nil {
 		return nil, err
 	}
+
 	// 添加Basic认证
     req.SetBasicAuth(c.username, c.password)  // 新增此行
 
 	req.Header.Set("X-Session-ID", c.sessionID)
 	req.Header.Set("Cache-Control", "no-cache")
 	
+
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36")
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8")
 	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
@@ -292,10 +303,12 @@ func main() {
 	var localPort int
 	var targetURL string
 	var debug bool
+	var directMode bool
 
 	flag.IntVar(&localPort, "l", 0, "Local port to listen on")
 	flag.StringVar(&targetURL, "t", "", "Target URL")
 	flag.BoolVar(&debug, "debug", false, "Enable debug logging")
+	flag.BoolVar(&directMode, "direct", false, "Enable direct connection mode")
 	flag.Parse()
 
 	if len(os.Args) == 1 {
@@ -355,6 +368,9 @@ func main() {
 
 	log.Printf("Client listening on port %d", localPort)
 	log.Printf("Connecting via %s://%s:%d", scheme, host, destPort)
+	if directMode {
+		log.Printf("Running in direct connection mode")
+	}
 
 	for {
 		conn, err := listener.Accept()
@@ -363,7 +379,7 @@ func main() {
 			continue
 		}
 
-		client := NewClient(host, destPort, scheme, debug, username, password)
+		client := NewClient(host, destPort, scheme, debug, directMode, username, password)
 		go client.handleConnection(conn)
 	}
 }
