@@ -207,14 +207,13 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Expires", "0")
 	w.Header().Set("Content-Type", "application/octet-stream")
 
-	// 在CDN模式下添加伪装头
-	if !s.directMode {
-		w.Header().Set("Server", "Apache/2.4.41 (Ubuntu)")
-		w.Header().Set("X-Powered-By", "PHP/7.4.33")
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("X-Frame-Options", "SAMEORIGIN")
-		w.Header().Set("X-XSS-Protection", "1; mode=block")
-	}
+
+	w.Header().Set("Server", "Apache/2.4.41 (Ubuntu)")
+	w.Header().Set("X-Powered-By", "PHP/7.4.33")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("X-Frame-Options", "SAMEORIGIN")
+	w.Header().Set("X-XSS-Protection", "1; mode=block")
+
 
 	var session *Session
 	sessionInterface, exists := s.sessions.Load(sessionID)
