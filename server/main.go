@@ -160,31 +160,32 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var sessionID string
-	if s.directMode {
-		sessionID = r.Header.Get("X-Session-ID")
-		if sessionID == "" {
-			// 在直连模式下使用客户端地址作为会话ID
-			sessionID = fmt.Sprintf("%x", sha256.Sum256([]byte(r.RemoteAddr)))
-		}
-	} else {
-		// CDN模式下的会话ID处理
-		sessionID = r.Header.Get("Cf-Ray")
-		if sessionID == "" {
-			sessionID = r.Header.Get("Cf-Connecting-Ip")
-		}
-		if sessionID == "" {
-			sessionID = r.Header.Get("X-Ephemeral")
-		}
+sessionID = r.Header.Get("X-Session-ID")
+if sessionID == "" {
+    sessionID = r.Header.Get("X-Ephemeral")
+}
 
-	}
+// 如果还是空再使用CDN的header
+if sessionID == "" {
+    sessionID = r.Header.Get("Cf-Ray")
+    if sessionID == "" {
+        sessionID = r.Header.Get("Cf-Connecting-Ip")
+    }
+}
 
-	if sessionID == "" {
-		if s.debug {
-			log.Printf("Error: Missing session ID from %s", r.RemoteAddr)
-		}
-		http.Error(w, "Missing session ID", http.StatusBadRequest)
-		return
-	}
+// 最后，如果所有header都为空，使用客户端地址作为后备方案
+if sessionID == "" {
+    sessionID = fmt.Sprintf("%x", sha256.Sum256([]byte(r.RemoteAddr)))
+}
+
+if sessionID == "" {
+    if s.debug {
+        log.Printf("Error: Missing session ID from %s", r.RemoteAddr)
+    }
+    http.Error(w, "Missing session ID", http.StatusBadRequest)
+    return
+}
+
 
 	// 设置基本响应头
 	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
