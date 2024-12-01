@@ -560,7 +560,7 @@ func main() {
 			continue
 		}
 
-		client := NewClient(host, destPort, scheme, debug)
+		client := NewClient(host, destPort, scheme, debug,username, password)
 		go client.handleConnection(conn)
 	}
 }
