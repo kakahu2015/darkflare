@@ -552,6 +552,14 @@ func main() {
 
 	log.Printf("DarkFlare client listening on port %d", localPort)
 	log.Printf("Connecting via %s://%s:%d", scheme, host, destPort)
+    
+	// 获取认证信息
+	username := ""
+	password := ""
+	if u.User != nil {
+		username = u.User.Username()
+		password, _ = u.User.Password()
+	}
 
 	for {
 		conn, err := listener.Accept()
@@ -560,7 +568,7 @@ func main() {
 			continue
 		}
 
-		client := NewClient(host, destPort, scheme, debug,username, password)
+		client := NewClient(host, destPort, scheme, debug, username, password)
 		go client.handleConnection(conn)
 	}
 }
