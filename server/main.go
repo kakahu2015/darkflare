@@ -1,29 +1,9 @@
-// Copyright (c) Barrett Lyon
-// blyon@blyon.com
-//
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-//
-// The above copyright notice and this permission notice shall be included in all
-// copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-// SOFTWARE.
-
 package main
 
 import (
 	"bufio"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/hex"
 	"flag"
 	"fmt"
@@ -34,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -54,9 +35,10 @@ type Server struct {
 	appCommand  string
 	isAppMode   bool
 	allowDirect bool
-	// 新增身份验证字段
-	username    string
-	password    string
+	// 新增字段
+	authUser    string
+	authPass    string
+	redirectURL string
 }
 
 func NewServer(destHost, destPort string, appCommand string, debug bool, allowDirect bool) *Server {
@@ -167,32 +149,98 @@ func (s *Server) handleApplication(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
-	    ////////////////////////////////////
-		username, password, ok := r.BasicAuth()
+func (s *Server) validateBasicAuth(auth string) bool {
+	if !strings.HasPrefix(auth, "Basic ") {
+		return false
+	}
+	payload, err := base64.StdEncoding.DecodeString(auth[6:])
+	if err != nil {
+		return false
+	}
+	pair := strings.SplitN(string(payload), ":", 2)
+	if len(pair) != 2 {
+		return false
+	}
+	return pair[0] == s.authUser && pair[1] == s.authPass
+}
 
-		if s.debug {
-			log.Printf("Auth attempt - User: %s, Auth OK: %v", username, ok)
-			log.Printf("Expected - User: %s, Pass: %s", s.username, s.password)
-		}
-		if !ok || username != s.username || password != s.password {
-			w.Header().Set("Location", "https://book.kakahu.org")
-			w.WriteHeader(http.StatusFound) 
+func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
+	// 新增认证检查
+	if s.authUser != "" {
+		auth := r.Header.Get("Authorization")
+		if !s.validateBasicAuth(auth) {
+			redirect := s.redirectURL
+			if redirect == "" {
+				redirect = "https://www.bing.com"
+			}
+			http.Redirect(w, r, redirect, http.StatusFound)
 			return
 		}
-		////////////////////////////////////
+	}
+
 	if s.isAppMode {
 		s.handleApplication(w, r)
 		return
 	}
 
+	// Add basic connection logging
+	clientIP := r.Header.Get("X-Forwarded-For")
+	if clientIP == "" {
+		clientIP = r.Header.Get("Cf-Connecting-Ip")
+	}
+	if clientIP == "" {
+		clientIP = r.RemoteAddr
+	}
+
+	// Get session ID early
+	sessionID := r.Header.Get("X-For")
+	if sessionID == "" {
+		sessionID = r.Header.Get("Cf-Ray")
+		if sessionID == "" {
+			sessionID = r.Header.Get("Cf-Connecting-Ip")
+		}
+	}
+
+	// Get and decode destination early
+	encodedDest := r.Header.Get("X-Requested-With")
+	if encodedDest == "" {
+		log.Printf("Redirect: %s → https://github.com/doxx/darkflare", clientIP)
+		http.Redirect(w, r, "https://github.com/doxx/darkflare", http.StatusFound)
+		return
+	}
+
+	// Check for connection termination
+	if r.Header.Get("X-Connection-Close") == "true" {
+		sessionDisplay := "no-session"
+		if sessionID != "" {
+			sessionDisplay = sessionID[:8]
+		}
+		log.Printf("Disconnect: %s [%s]", clientIP, sessionDisplay)
+		if sessionInterface, exists := s.sessions.LoadAndDelete(sessionID); exists {
+			session := sessionInterface.(*Session)
+			session.conn.Close()
+		}
+		return
+	}
+
+	destBytes, err := base64.StdEncoding.DecodeString(encodedDest)
+	if err != nil {
+		http.Error(w, "Invalid destination encoding", http.StatusBadRequest)
+		return
+	}
+	destination := string(destBytes)
+
+	// Always log basic connection info
+	sessionDisplay := "no-session"
+	if sessionID != "" {
+		sessionDisplay = sessionID[:8] // First 8 chars of session ID
+	}
+	log.Printf("Connection: %s [%s] → %s", clientIP, sessionDisplay, destination)
+
+	// Debug logging only when enabled
 	if s.debug {
-		log.Printf("Request: %s %s from %s",
-			r.Method,
-			r.URL.Path,
-			r.Header.Get("Cf-Connecting-Ip"),
-		)
 		log.Printf("Headers: %+v", r.Header)
+		// ... rest of debug logging ...
 	}
 
 	// Verify Cloudflare connection
@@ -215,8 +263,73 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Expires", "0")
 	w.Header().Set("Content-Type", "application/octet-stream")
 
+	// Validate the destination format and DNS resolution
+	host, port, err := net.SplitHostPort(destination)
+	if err != nil {
+		if s.debug {
+			log.Printf("[DEBUG] Invalid destination format %s: %v", destination, err)
+		}
+		http.Error(w, fmt.Sprintf("Invalid destination format: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	// Additional host validation
+	if host == "" {
+		if s.debug {
+			log.Printf("[DEBUG] Empty host in destination: %s", destination)
+		}
+		http.Error(w, "Empty host not allowed", http.StatusBadRequest)
+		return
+	}
+
+	// Validate port
+	portNum, err := strconv.Atoi(port)
+	if err != nil || portNum < 1 || portNum > 65535 {
+		if s.debug {
+			log.Printf("[DEBUG] Invalid port %s in destination: %v", port, err)
+		}
+		http.Error(w, fmt.Sprintf("Invalid port number: %s", port), http.StatusBadRequest)
+		return
+	}
+
+	// DNS resolution check
+	if ip := net.ParseIP(host); ip == nil {
+		ips, err := net.LookupHost(host)
+		if err != nil {
+			if s.debug {
+				log.Printf("[DEBUG] DNS resolution failed for %s: %v", host, err)
+			}
+			http.Error(w, fmt.Sprintf("DNS resolution failed: %v", err), http.StatusBadRequest)
+			return
+		}
+		if len(ips) == 0 {
+			if s.debug {
+				log.Printf("[DEBUG] No IP addresses found for host: %s", host)
+			}
+			http.Error(w, "No IP addresses found for host", http.StatusBadRequest)
+			return
+		}
+		if s.debug {
+			log.Printf("[DEBUG] Resolved %s to %v", host, ips)
+		}
+	}
+
+	// Validate the destination
+	if !isValidDestination(destination) {
+		if s.debug {
+			log.Printf("[DEBUG] Invalid destination format: %s", destination)
+		}
+		http.Error(w, "Invalid destination", http.StatusForbidden)
+		return
+	}
+
+	// Use the decoded destination for the connection
+	if s.debug {
+		log.Printf("[DEBUG] Connecting to %s:%s", host, port)
+	}
+
 	// Try to get session ID from various possible headers
-	sessionID := r.Header.Get("X-Ephemeral")
+	sessionID = r.Header.Get("X-For")
 	if sessionID == "" {
 		// Try Cloudflare-specific headers
 		sessionID = r.Header.Get("Cf-Ray")
@@ -237,7 +350,7 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 	var session *Session
 	sessionInterface, exists := s.sessions.Load(sessionID)
 	if !exists {
-		conn, err := net.Dial("tcp", fmt.Sprintf("%s:%s", s.destHost, s.destPort))
+		conn, err := net.Dial("tcp", fmt.Sprintf("%s:%s", host, port))
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -286,11 +399,11 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// For GET requests, read any available data
-	buffer := make([]byte, 8192)
-	var readData []byte
+	buffer := make([]byte, 32*1024)      // 32KB buffer
+	readData := make([]byte, 0, 64*1024) // 64KB initial capacity
 
 	for {
-		session.conn.SetReadDeadline(time.Now().Add(50 * time.Millisecond))
+		session.conn.SetReadDeadline(time.Now().Add(100 * time.Millisecond)) // Increased from 10ms to 100ms
 		n, err := session.conn.Read(buffer)
 		if err != nil {
 			if err != io.EOF && !err.(net.Error).Timeout() {
@@ -303,15 +416,9 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		if n > 0 {
-			if s.debug {
-				log.Printf("GET: Read %d bytes from connection for session %s",
-					n,
-					sessionID[:8],
-				)
-			}
 			readData = append(readData, buffer[:n]...)
 		}
-		if n < len(buffer) {
+		if n < len(buffer) || len(readData) >= 64*1024 { // Added size limit check
 			break
 		}
 	}
@@ -338,49 +445,59 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	var origin string
-	var dest string
 	var certFile string
 	var keyFile string
 	var debug bool
 	var allowDirect bool
-	var appCommand string
+	// 新增参数
 	var auth string
+	var redirectURL string
+
+	var appCommand string
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "DarkFlare Server - TCP-over-CDN tunnel server component\n")
-		fmt.Fprintf(os.Stderr, "(c) 2024 Barrett Lyon - blyon@blyon.com\n\n")
+		fmt.Fprintf(os.Stderr, "(c) 2024 Barrett Lyon\n\n")
 		fmt.Fprintf(os.Stderr, "Usage:\n")
 		fmt.Fprintf(os.Stderr, "  %s [options]\n\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "Options:\n")
-		fmt.Fprintf(os.Stderr, "  -o        Origin address in format: http(s)://ip:port\n")
-		fmt.Fprintf(os.Stderr, "            Example: https://0.0.0.0:443\n")
-		fmt.Fprintf(os.Stderr, "  -c        Path to certificate file (required for HTTPS)\n")
-		fmt.Fprintf(os.Stderr, "  -k        Path to private key file (required for HTTPS)\n")
-		fmt.Fprintf(os.Stderr, "  -d        Destination address in host:port format\n")
-		fmt.Fprintf(os.Stderr, "            Example: localhost:22 for SSH forwarding\n\n")
-		fmt.Fprintf(os.Stderr, "  -a        Application mode: launches a command instead of forwarding\n")
-		fmt.Fprintf(os.Stderr, "            Example: 'sshd -i' or 'pppd noauth'\n")
-		fmt.Fprintf(os.Stderr, "            Note: Cannot be used with -d flag\n\n")
-		fmt.Fprintf(os.Stderr, "  -debug    Enable debug logging\n")
-		fmt.Fprintf(os.Stderr, "  -allow-direct  Allow direct connections without Cloudflare headers\n")
-		fmt.Fprintf(os.Stderr, "            Warning: Not recommended for production use\n\n")
+		fmt.Fprintf(os.Stderr, "  -o        Listen address for the server\n")
+		fmt.Fprintf(os.Stderr, "            Format: proto://[host]:port\n")
+		fmt.Fprintf(os.Stderr, "            Default: http://0.0.0.0:8080\n\n")
+		fmt.Fprintf(os.Stderr, "  -allow-direct\n")
+		fmt.Fprintf(os.Stderr, "            Allow direct connections not coming through Cloudflare\n")
+		fmt.Fprintf(os.Stderr, "            Default: false (only allow Cloudflare IPs)\n\n")
+		fmt.Fprintf(os.Stderr, "  -c        Path to TLS certificate file\n")
+		fmt.Fprintf(os.Stderr, "            Default: Auto-generated self-signed cert\n\n")
+		fmt.Fprintf(os.Stderr, "  -k        Path to TLS private key file\n")
+		fmt.Fprintf(os.Stderr, "            Default: Auto-generated with cert\n\n")
+		fmt.Fprintf(os.Stderr, "  -debug    Enable detailed debug logging\n")
+		fmt.Fprintf(os.Stderr, "            Shows connection details and errors\n\n")
 		fmt.Fprintf(os.Stderr, "Examples:\n")
-		fmt.Fprintf(os.Stderr, "  HTTPS Server:\n")
-		fmt.Fprintf(os.Stderr, "    %s -o https://0.0.0.0:443 -d localhost:22 -c /path/to/cert.pem -k /path/to/key.pem\n\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "  HTTP Server:\n")
-		fmt.Fprintf(os.Stderr, "    %s -o http://0.0.0.0:80 -d localhost:22\n\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "For more information: https://github.com/blyon/darkflare\n")
+		fmt.Fprintf(os.Stderr, "  Basic setup:\n")
+		fmt.Fprintf(os.Stderr, "    %s -o http://0.0.0.0:8080\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  With custom TLS certificates:\n")
+		fmt.Fprintf(os.Stderr, "    %s -o https://0.0.0.0:443 -c /path/to/cert.pem -k /path/to/key.pem\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  Debug mode with metrics:\n")
+		fmt.Fprintf(os.Stderr, "    %s -o http://0.0.0.0:8080 -debug\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Notes:\n")
+		fmt.Fprintf(os.Stderr, "  - Server accepts destination from client via X-Requested-With header\n")
+		fmt.Fprintf(os.Stderr, "  - Destination validation is performed for security\n")
+		fmt.Fprintf(os.Stderr, "  - Use with Cloudflare as reverse proxy for best security\n\n")
+		fmt.Fprintf(os.Stderr, "For more information: https://github.com/doxx/darkflare\n")
 	}
 
-	flag.StringVar(&auth, "auth", "", "Basic auth (user:pass)")
 	flag.StringVar(&origin, "o", "http://0.0.0.0:8080", "")
-	flag.StringVar(&dest, "d", "", "")
 	flag.StringVar(&certFile, "c", "", "")
 	flag.StringVar(&keyFile, "k", "", "")
 	flag.StringVar(&appCommand, "a", "", "")
 	flag.BoolVar(&debug, "debug", false, "")
+	flag.StringVar(&auth, "auth", "", "Basic auth in user:pass format")
+	flag.StringVar(&redirectURL, "redirect", "https://www.bing.com", "Redirect URL for failed auth")
 	flag.BoolVar(&allowDirect, "allow-direct", false, "")
 	flag.Parse()
+
+
 
 	// Parse origin URL
 	originURL, err := url.Parse(origin)
@@ -399,32 +516,22 @@ func main() {
 		log.Fatalf("Invalid origin address: %v", err)
 	}
 
-	// Parse destination
-	var destHost, destPort string
-	if dest != "" {
-		destHost, destPort, err = net.SplitHostPort(dest)
-		if err != nil {
-			log.Fatalf("Invalid destination address: %v", err)
-		}
-	}
-
 	// Validate IP is local
 	if !isLocalIP(originHost) {
 		log.Fatal("Origin host must be a local IP address")
 	}
 
-	server := NewServer(destHost, destPort, appCommand, debug, allowDirect)
-	//////////////////////
-	// 解析完参数后加上
+	server := NewServer(originHost, originPort, appCommand, debug, allowDirect)
+	//auth
 	if auth != "" {
 		parts := strings.Split(auth, ":")
-		if len(parts) == 2 {
-			server.username = parts[0] 
-			server.password = parts[1]
+		if len(parts) != 2 {
+			log.Fatal("Invalid auth format, should be user:pass")
 		}
+		server.authUser = parts[0]
+		server.authPass = parts[1]
+		server.redirectURL = redirectURL
 	}
-	//////////////////////
-
 	log.Printf("DarkFlare server running on %s://%s:%s", originURL.Scheme, originHost, originPort)
 	if allowDirect {
 		log.Printf("Warning: Direct connections allowed (no Cloudflare required)")
@@ -440,10 +547,6 @@ func main() {
 		cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 		if err != nil {
 			log.Fatalf("Failed to load certificate and key: %v", err)
-		}
-
-		if debug {
-			log.Printf("Successfully loaded certificate from %s and key from %s", certFile, keyFile)
 		}
 
 		server := &http.Server{
@@ -521,14 +624,65 @@ func main() {
 }
 
 func isLocalIP(ip string) bool {
-	if ip == "0.0.0.0" || ip == "127.0.0.1" || ip == "::1" {
-		return true
-	}
-
 	ipAddr := net.ParseIP(ip)
 	if ipAddr == nil {
 		return false
 	}
 
-	return ipAddr.IsLoopback() || ipAddr.IsPrivate()
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		log.Printf("Error getting network interfaces: %v", err)
+		return false
+	}
+
+	for _, iface := range interfaces {
+		addrs, err := iface.Addrs()
+		if err != nil {
+			log.Printf("Error getting addresses for interface %s: %v", iface.Name, err)
+			continue
+		}
+
+		for _, addr := range addrs {
+			var localIP net.IP
+			switch v := addr.(type) {
+			case *net.IPNet:
+				localIP = v.IP
+			case *net.IPAddr:
+				localIP = v.IP
+			}
+
+			if localIP.Equal(ipAddr) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+func isValidDestination(dest string) bool {
+	host, portStr, err := net.SplitHostPort(dest)
+	if err != nil {
+		return false
+	}
+
+	// Validate port
+	port, err := strconv.Atoi(portStr)
+	if err != nil || port < 1 || port > 65535 {
+		return false
+	}
+
+	// Validate host
+	if host == "" {
+		return false
+	}
+
+	// Check if it's an IP address
+	if ip := net.ParseIP(host); ip != nil {
+		return true
+	}
+
+	// Try DNS resolution
+	ips, err := net.LookupHost(host)
+	return err == nil && len(ips) > 0
 }
