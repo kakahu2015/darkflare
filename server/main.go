@@ -28,30 +28,36 @@ type Session struct {
 }
 
 type Server struct {
-	sessions    sync.Map
-	destHost    string
-	destPort    string
-	debug       bool
-	appCommand  string
-	isAppMode   bool
-	allowDirect bool
-	// 新增字段
-	authUser    string
-	authPass    string
-	redirectURL string
+	sessions     sync.Map
+	destHost     string
+	destPort     string
+	debug        bool
+	appCommand   string
+	isAppMode    bool
+	allowDirect  bool
+	silent       bool
+	redirect     string
+	overrideDest string
+	username     string    // 新增
+	password     string    // 新增
 }
 
-func NewServer(destHost, destPort string, appCommand string, debug bool, allowDirect bool) *Server {
+func NewServer(destHost, destPort string, appCommand string, debug bool, allowDirect bool, silent bool, redirect string, overrideDest string,username string, password string) *Server {
 	s := &Server{
-		destHost:    destHost,
-		destPort:    destPort,
-		debug:       debug,
-		appCommand:  appCommand,
-		isAppMode:   appCommand != "",
-		allowDirect: allowDirect,
+		destHost:     destHost,
+		destPort:     destPort,
+		debug:        debug,
+		appCommand:   appCommand,
+		isAppMode:    appCommand != "",
+		allowDirect:  allowDirect,
+		silent:       silent,
+		redirect:     redirect,
+		overrideDest: overrideDest,
+		username:     username,     // 新增
+		password:     password,     // 新增
 	}
 
-	if s.isAppMode && s.debug {
+	if s.isAppMode && s.debug && !s.silent {
 		log.Printf("Starting in application mode with command: %s", appCommand)
 	}
 
@@ -149,31 +155,21 @@ func (s *Server) handleApplication(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) validateBasicAuth(auth string) bool {
-	if !strings.HasPrefix(auth, "Basic ") {
-		return false
-	}
-	payload, err := base64.StdEncoding.DecodeString(auth[6:])
-	if err != nil {
-		return false
-	}
-	pair := strings.SplitN(string(payload), ":", 2)
-	if len(pair) != 2 {
-		return false
-	}
-	return pair[0] == s.authUser && pair[1] == s.authPass
-}
-
 func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
-	// 新增认证检查
-	if s.authUser != "" {
-		auth := r.Header.Get("Authorization")
-		if !s.validateBasicAuth(auth) {
-			redirect := s.redirectURL
-			if redirect == "" {
-				redirect = "https://www.bing.com"
+	// 添加认证检查
+	if s.username != "" || s.password != "" {
+		username, password, ok := r.BasicAuth()
+		if s.debug {
+			log.Printf("Auth attempt - User: %s, Auth OK: %v", username, ok)
+			log.Printf("Expected - User: %s, Pass: %s", s.username, s.password)
+		}
+		if !ok || username != s.username || password != s.password {
+			redirectURL := s.redirect
+			if redirectURL == "" {
+				redirectURL = "https://github.com/doxx/darkflare"
 			}
-			http.Redirect(w, r, redirect, http.StatusFound)
+			w.Header().Set("Location", redirectURL)
+			w.WriteHeader(http.StatusFound)
 			return
 		}
 	}
@@ -204,9 +200,28 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 	// Get and decode destination early
 	encodedDest := r.Header.Get("X-Requested-With")
 	if encodedDest == "" {
-		log.Printf("Redirect: %s → https://github.com/doxx/darkflare", clientIP)
-		http.Redirect(w, r, "https://github.com/doxx/darkflare", http.StatusFound)
+		redirectURL := s.redirect
+		if redirectURL == "" {
+			redirectURL = "https://github.com/doxx/darkflare"
+		}
+		log.Printf("Redirect: %s → %s", clientIP, redirectURL)
+		http.Redirect(w, r, redirectURL, http.StatusFound)
 		return
+	}
+
+	var destination string
+	if s.overrideDest != "" {
+		destination = s.overrideDest
+		if s.debug {
+			log.Printf("Using override destination: %s", destination)
+		}
+	} else {
+		destBytes, err := base64.StdEncoding.DecodeString(encodedDest)
+		if err != nil {
+			http.Error(w, "Invalid destination encoding", http.StatusBadRequest)
+			return
+		}
+		destination = string(destBytes)
 	}
 
 	// Check for connection termination
@@ -223,19 +238,12 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	destBytes, err := base64.StdEncoding.DecodeString(encodedDest)
-	if err != nil {
-		http.Error(w, "Invalid destination encoding", http.StatusBadRequest)
-		return
-	}
-	destination := string(destBytes)
-
 	// Always log basic connection info
 	sessionDisplay := "no-session"
 	if sessionID != "" {
 		sessionDisplay = sessionID[:8] // First 8 chars of session ID
 	}
-	log.Printf("Connection: %s [%s] → %s", clientIP, sessionDisplay, destination)
+	s.logf("Connection: %s [%s] → %s", clientIP, sessionDisplay, destination)
 
 	// Debug logging only when enabled
 	if s.debug {
@@ -449,11 +457,11 @@ func main() {
 	var keyFile string
 	var debug bool
 	var allowDirect bool
-	// 新增参数
-	var auth string
-	var redirectURL string
-
 	var appCommand string
+	var silent bool
+	var redirect string
+	var overrideDest string
+	var auth string
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "DarkFlare Server - TCP-over-CDN tunnel server component\n")
@@ -473,6 +481,14 @@ func main() {
 		fmt.Fprintf(os.Stderr, "            Default: Auto-generated with cert\n\n")
 		fmt.Fprintf(os.Stderr, "  -debug    Enable detailed debug logging\n")
 		fmt.Fprintf(os.Stderr, "            Shows connection details and errors\n\n")
+		fmt.Fprintf(os.Stderr, "  -s        Silent mode\n")
+		fmt.Fprintf(os.Stderr, "            Suppresses all non-error output\n\n")
+		fmt.Fprintf(os.Stderr, "  -redirect Custom URL to redirect unauthorized requests\n")
+		fmt.Fprintf(os.Stderr, "            Default: GitHub project page\n\n")
+		fmt.Fprintf(os.Stderr, "  -override-dest\n")
+		fmt.Fprintf(os.Stderr, "            Override client destination with server-side setting\n")
+		fmt.Fprintf(os.Stderr, "            Format: host:port\n")
+		fmt.Fprintf(os.Stderr, "            Default: Use client-provided destination\n\n")
 		fmt.Fprintf(os.Stderr, "Examples:\n")
 		fmt.Fprintf(os.Stderr, "  Basic setup:\n")
 		fmt.Fprintf(os.Stderr, "    %s -o http://0.0.0.0:8080\n\n", os.Args[0])
@@ -485,16 +501,18 @@ func main() {
 		fmt.Fprintf(os.Stderr, "  - Destination validation is performed for security\n")
 		fmt.Fprintf(os.Stderr, "  - Use with Cloudflare as reverse proxy for best security\n\n")
 		fmt.Fprintf(os.Stderr, "For more information: https://github.com/doxx/darkflare\n")
+		fmt.Fprintf(os.Stderr, "  -auth     Basic authentication credentials\n")
 	}
-
+	flag.StringVar(&auth, "auth", "", "Basic auth (user:pass)")
 	flag.StringVar(&origin, "o", "http://0.0.0.0:8080", "")
 	flag.StringVar(&certFile, "c", "", "")
 	flag.StringVar(&keyFile, "k", "", "")
 	flag.StringVar(&appCommand, "a", "", "")
 	flag.BoolVar(&debug, "debug", false, "")
-	flag.StringVar(&auth, "auth", "", "Basic auth in user:pass format")
-	flag.StringVar(&redirectURL, "redirect", "https://www.bing.com", "Redirect URL for failed auth")
 	flag.BoolVar(&allowDirect, "allow-direct", false, "")
+	flag.BoolVar(&silent, "s", false, "")
+	flag.StringVar(&redirect, "redirect", "", "Custom URL to redirect unauthorized requests (default: GitHub project page)")
+	flag.StringVar(&overrideDest, "override-dest", "", "Override destination address (format: host:port)")
 	flag.Parse()
 
 
@@ -521,17 +539,31 @@ func main() {
 		log.Fatal("Origin host must be a local IP address")
 	}
 
-	server := NewServer(originHost, originPort, appCommand, debug, allowDirect)
-	//auth
+	if !silent {
+		log.Printf("DarkFlare server listening on %s", origin)
+	}
+
+	// If override-dest is provided, validate it
+	if overrideDest != "" {
+		if !isValidDestination(overrideDest) {
+			log.Fatal("Invalid override destination format")
+		}
+		if !silent {
+			log.Printf("Using server-side destination override: %s", overrideDest)
+		}
+	}
+
+	server := NewServer(originHost, originPort, appCommand, debug, allowDirect, silent, redirect, overrideDest,"","")
+
+	// 解析认证信息
 	if auth != "" {
 		parts := strings.Split(auth, ":")
-		if len(parts) != 2 {
-			log.Fatal("Invalid auth format, should be user:pass")
+		if len(parts) == 2 {
+			server.username = parts[0]
+			server.password = parts[1]
 		}
-		server.authUser = parts[0]
-		server.authPass = parts[1]
-		server.redirectURL = redirectURL
 	}
+
 	log.Printf("DarkFlare server running on %s://%s:%s", originURL.Scheme, originHost, originPort)
 	if allowDirect {
 		log.Printf("Warning: Direct connections allowed (no Cloudflare required)")
@@ -624,11 +656,22 @@ func main() {
 }
 
 func isLocalIP(ip string) bool {
+	// Allow 0.0.0.0 as a valid binding address
+	if ip == "0.0.0.0" {
+		return true
+	}
+
 	ipAddr := net.ParseIP(ip)
 	if ipAddr == nil {
 		return false
 	}
 
+	// Check if it's a loopback address
+	if ipAddr.IsLoopback() {
+		return true
+	}
+
+	// Get all network interfaces
 	interfaces, err := net.Interfaces()
 	if err != nil {
 		log.Printf("Error getting network interfaces: %v", err)
@@ -643,16 +686,15 @@ func isLocalIP(ip string) bool {
 		}
 
 		for _, addr := range addrs {
-			var localIP net.IP
 			switch v := addr.(type) {
 			case *net.IPNet:
-				localIP = v.IP
+				if v.IP.Equal(ipAddr) {
+					return true
+				}
 			case *net.IPAddr:
-				localIP = v.IP
-			}
-
-			if localIP.Equal(ipAddr) {
-				return true
+				if v.IP.Equal(ipAddr) {
+					return true
+				}
 			}
 		}
 	}
@@ -685,4 +727,10 @@ func isValidDestination(dest string) bool {
 	// Try DNS resolution
 	ips, err := net.LookupHost(host)
 	return err == nil && len(ips) > 0
+}
+
+func (s *Server) logf(format string, v ...interface{}) {
+	if !s.silent {
+		log.Printf(format, v...)
+	}
 }
