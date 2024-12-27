@@ -607,9 +607,18 @@ func main() {
 		log.Printf("Debug mode enabled")
 	}
 
+
+	// 获取认证信息
+	username := ""
+	password := ""
+	if u.User != nil {
+		username = u.User.Username()
+		password, _ = u.User.Password()
+	}
+
 	if localAddr == "stdin:stdout" {
 		// Create client in stdin/stdout mode
-		client := NewClient(host, destPort, scheme, destAddr, debug, proxyURL)
+		client := NewClient(host, destPort, scheme, destAddr, debug, proxyURL,username, password)
 		// Use os.Stdin and os.Stdout as the connection
 		stdinStdout := &StdinStdoutConn{
 			Reader: os.Stdin,
@@ -638,7 +647,7 @@ func main() {
 				continue
 			}
 
-			client := NewClient(host, destPort, scheme, destAddr, debug, proxyURL)
+			client := NewClient(host, destPort, scheme, destAddr, debug, proxyURL,username, password)
 			go client.handleConnection(conn)
 		}
 	}
